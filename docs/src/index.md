@@ -24,13 +24,13 @@ This package is authored by Corentin Lothodé, and is largely inspired by
 The package is not in the Julia registry. Add it from the repository:
 
 ```
-pkg> add https://plmlab.math.cnrs.fr/lmrs/num/SuperfluidDynamics.jl
+pkg> add https://plmlab.math.cnrs.fr/lothode/SuperfluidDynamics.jl
 ```
 
 or clone it and work from a local project:
 
 ```bash
-git clone git@plmlab.math.cnrs.fr:lmrs/num/SuperfluidDynamics.jl.git
+git clone git@plmlab.math.cnrs.fr:lothode/SuperfluidDynamics.jl.git
 cd SuperfluidDynamics.jl
 julia --project=.
 ```

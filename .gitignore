@@ -11,3 +11,6 @@ clean.sh
 docs/build/
 docs/src/generated/
 docs/Manifest.toml
+
+# Local secrets (GitLab tokens etc.)
+.env

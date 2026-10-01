@@ -13,11 +13,23 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Returns a first order splitting scheme (only FFT).
+Returns a first order Lie operator-splitting scheme for the time-dependent
+Gross-Pitaevskii equation (only FFTs, no linear solve).
 
 # Details
 
-TODO
+The step factorises the exact flows of the two parts of the equation over the
+full step `Δt`: `exp(iΔt L)` applied to the linear (kinetic + rotation) part
+through the spectral propagator — applied pencil by pencil along each direction
+— followed by the exact nonlinear phase `exp(-i(V + β|ϕ|²)Δt)`. No system is
+solved implicitly: despite its name, this is **not** an alternating-direction
+implicit scheme; `ADI` is only the historical name inherited from the GPS
+Fortran code.
+
+!!! todo
+    Rename to `NumModelSplit1` (keeping a deprecation alias) once the
+    accompanying article is submitted: the current name is applied throughout
+    the examples, so renaming it now would break them.
 
 # Example
 
@@ -69,11 +81,22 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Returns a second order splitting scheme (only FFT).
+Returns a second order Strang operator-splitting scheme for the time-dependent
+Gross-Pitaevskii equation (only FFTs, no linear solve).
 
 # Details
 
-TODO
+The step applies the exact linear flow `exp(iΔt L/2)` (spectral propagator of
+the kinetic + rotation part, pencil by pencil along each direction), then the
+exact nonlinear phase `exp(-i(V + β|ϕ|²)Δt)`, then `exp(iΔt L/2)` again. No
+system is solved implicitly: despite its name, this is **not** an
+alternating-direction implicit scheme; `ADI` is only the historical name
+inherited from the GPS Fortran code.
+
+!!! todo
+    Rename to `NumModelSplit2` (keeping a deprecation alias) once the
+    accompanying article is submitted: the current name is applied throughout
+    the examples, so renaming it now would break them.
 
 # Example
 

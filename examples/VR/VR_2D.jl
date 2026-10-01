@@ -129,7 +129,7 @@ param_insta = GrossPitaevskiiParameters(; coeffΔ=param.coeffΔ,
                                         pot=PotentialZero(field_insta))
 
 # We instantiate a `NumModelADI2` which corresponds to
-# a second order Strangle scheme.
+# the second order Strang operator splitting (despite its name, `ADI` here is a historical name from GPS: no direction is solved implicitly).
 
 Δt_insta = Δt / 2.5
 niter_insta = 20000

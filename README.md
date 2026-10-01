@@ -5,6 +5,8 @@
 [![Documentation](https://img.shields.io/badge/documentation-online-blue.svg)](https://lothode.pages.math.cnrs.fr/SuperfluidDynamics.jl)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+> **The official repository is hosted on [plmlab.math.cnrs.fr](https://plmlab.math.cnrs.fr/lothode/SuperfluidDynamics.jl)** (this repository is also mirrored on GitHub). Please open issues and merge requests on the official repository.
+
 This is a package allowing simulation of superfluids. The first intention of this package is to solve the Gross-Pitaevskii equation to simulation Bose-Einstein Condensates. It evolved into a more advance package in order to solve Quantum-Turbulence. It now also solves the incompressible Navier-Stokes equations, the coupled Gross-Pitaevskii / Navier-Stokes two-fluid model of Parnaudeau et al. (NSGP), and the linear Hall-Vinen-Bekarevich-Khalatnikov (HVBK) two-fluid model. Derivatives are estimated through Fourier transformations or finite differences.
 
 In order to be parallel (distributed), this package exploits intensively `PencilArrays`. Most of the package is written using broadcast, and is compatible with both CPU arrays (`Array`) and CUDA arrays (`CuArray`). It was not tested for other array type, yet. Every array creation is inferred from the `Grid` array type.

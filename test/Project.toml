@@ -3,8 +3,12 @@ uuid = "e6622f54-a1ee-11f1-b96c-5988b58c562e"
 authors = ["Corentin Lothode <corentin.lothode@univ-rouen.fr>"]
 
 [deps]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+PencilArrays = "0e08944d-e94e-41b1-9406-dcf66b6a9d2e"
 SuperfluidDynamics = "7b6395f6-f378-46b0-9ce4-4708ac745388"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
+CUDA = "6.3"
+PencilArrays = "0.19.12"
 julia = "1.10"

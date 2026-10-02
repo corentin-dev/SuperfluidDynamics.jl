@@ -40,9 +40,12 @@ field.ϕ ./= sqrt(sum(abs2.(field.ϕ)) * grid.Δx * grid.Δy)   # global norm
 
 param = BdGParameters(coeffΔ=-0.5, β=0.0, pot=PotentialQuadratic(field; γx=ωx, γy=ωy^2), Ω=0.0)
 model = NumModelBdG(field, param, 1, 1; nev=NEV)
+println("rank $rank/$nranks bdg[1]: model construit, entrée dans le solveur"); flush(stdout)
 
 SuperfluidDynamics.timeStep!(model)      # collective operator, local Arpack
+println("rank $rank/$nranks bdg[2]: solveur revenu"); flush(stdout)
 MPI.Barrier(comm)
+println("rank $rank/$nranks bdg[3]: barrière passée"); flush(stdout)
 
 # Rank 0 checks against the analytic spectrum; other ranks report their own
 # values, so a rank-dependent answer proves the eigensolve was rank-local.

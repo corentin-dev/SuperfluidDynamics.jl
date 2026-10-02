@@ -407,7 +407,3 @@ function timeStep!(n::NumModelHVBK)
     ldiv_all!(n.fs.u, n.plan, n.us_hat)
     return 0
 end
-
-# Deprecated aliases (misspelling of the model name).
-Base.@deprecate_binding HBVKParameters HVBKParameters
-Base.@deprecate_binding NumModelHBVK NumModelHVBK

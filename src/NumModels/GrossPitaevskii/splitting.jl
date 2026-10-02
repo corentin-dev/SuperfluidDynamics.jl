@@ -119,10 +119,6 @@ function timeStep!(n::NumModelSplit2)
     return 2
 end
 
-# Deprecated aliases.
-Base.@deprecate_binding NumModelADI1 NumModelSplit1
-Base.@deprecate_binding NumModelADI2 NumModelSplit2
-
 function solveLapRot!(n::AbstractNumModel{F}, Δtl) where {F<:AbstractField2D}
     # field
     ϕ = n.f.ϕ

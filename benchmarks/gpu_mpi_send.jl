@@ -28,7 +28,7 @@ probe(label, sendbuf, recvbuf) = try
     if rank == 0
         MPI.Send(sendbuf, 1, 0, comm)
     else
-        MPI.Recv!(recvbuf, 0, 1, comm)
+        MPI.Recv!(recvbuf, 0, 0, comm)   # tag must match the Send (tag 0)
     end
     MPI.Barrier(comm)
     println("rank $rank $label: OK")

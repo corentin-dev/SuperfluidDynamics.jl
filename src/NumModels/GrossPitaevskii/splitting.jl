@@ -1,4 +1,4 @@
-mutable struct NumModelADI1{F,P,Plan} <: AbstractNumModel{F,P,Plan}
+mutable struct NumModelSplit1{F,P,Plan} <: AbstractNumModel{F,P,Plan}
     f::F
     gf::Any
     param::P
@@ -9,65 +9,56 @@ mutable struct NumModelADI1{F,P,Plan} <: AbstractNumModel{F,P,Plan}
     writers::AbstractWriterCollection{F}
 end
 
-
 """
 $(TYPEDSIGNATURES)
 
-Returns a first order Lie operator-splitting scheme for the time-dependent
-Gross-Pitaevskii equation (only FFTs, no linear solve).
+Returns a first order operator splitting scheme numerical model (only FFT).
 
-# Details
+# Detail
 
-The step factorises the exact flows of the two parts of the equation over the
-full step `Δt`: `exp(iΔt L)` applied to the linear (kinetic + rotation) part
-through the spectral propagator — applied pencil by pencil along each direction
-— followed by the exact nonlinear phase `exp(-i(V + β|ϕ|²)Δt)`. No system is
-solved implicitly: despite its name, this is **not** an alternating-direction
-implicit scheme; `ADI` is only the historical name inherited from the GPS
-Fortran code.
+Each step applies the two exact flows of the equation over the full time step:
 
-!!! todo
-    Rename to `NumModelSplit1` (keeping a deprecation alias) once the
-    accompanying article is submitted: the current name is applied throughout
-    the examples, so renaming it now would break them.
+- the linear flow ``exp(i Δt (-coeffΔ ∇² + Ω L_z))``, computed in Fourier space
+  direction by direction (no linear system is solved);
+- the nonlinear flow ``exp(-i (V + β |ϕ|²) Δt)``, exact in physical space.
 
 # Example
 
 ```jldoctest
 julia> param = GrossPitaevskiiParameters(β = 1000, Ω = 0.8, pot = PotentialZero(field));
-julia> nummodel = NumModelADI1(field, param, 0.01, 1000, 100)
+julia> nummodel = NumModelSplit1(field, param, 0.01, 1000, 100)
 Splitting Order 1
   ├───────  time step: 0.01
   └──────────── solve: number of iterations 1000, backup frequency 100
 ```
 """
-function NumModelADI1(f::AbstractField, param::AbstractParameters,
-                      Δt::Real, niter::Integer, freqbckp::Integer)
+function NumModelSplit1(f::AbstractField, param::AbstractParameters,
+                        Δt::Real, niter::Integer, freqbckp::Integer)
     gf = GradientField(f; rotation=true)
     plan = Plan(f)
     writer = WriterVTK(f)
     saver = WriterSave(f)
     writers = WriterCollection([writer, saver])
-    return NumModelADI1{typeof(f),typeof(param),typeof(plan)}(f, gf, param,
-                                                              Δt, niter, freqbckp,
-                                                              plan,
-                                                              writers)
+    return NumModelSplit1{typeof(f),typeof(param),typeof(plan)}(f, gf, param,
+                                                                Δt, niter, freqbckp,
+                                                                plan,
+                                                                writers)
 end
 
-function Base.show(io::IO, n::NumModelADI1)
+function Base.show(io::IO, n::NumModelSplit1)
     return print(io,
                  "Splitting Order 1\n",
                  "  ├───────  time step: $(n.Δt)\n",
                  "  └──────────── solve: number of iterations $(n.niter), backup frequency $(n.freqbckp)")
 end
 
-function timeStep!(n::NumModelADI1)
+function timeStep!(n::NumModelSplit1)
     solveLapRot!(n, n.Δt)
     solveNL!(n, n.Δt)
     return 1
 end
 
-mutable struct NumModelADI2{F,P,Plan} <: AbstractNumModel{F,P,Plan}
+mutable struct NumModelSplit2{F,P,Plan} <: AbstractNumModel{F,P,Plan}
     f::F
     gf::Any
     param::P
@@ -81,59 +72,56 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Returns a second order Strang operator-splitting scheme for the time-dependent
-Gross-Pitaevskii equation (only FFTs, no linear solve).
+Returns a second order Strang splitting scheme numerical model (only FFT).
 
-# Details
+# Detail
 
-The step applies the exact linear flow `exp(iΔt L/2)` (spectral propagator of
-the kinetic + rotation part, pencil by pencil along each direction), then the
-exact nonlinear phase `exp(-i(V + β|ϕ|²)Δt)`, then `exp(iΔt L/2)` again. No
-system is solved implicitly: despite its name, this is **not** an
-alternating-direction implicit scheme; `ADI` is only the historical name
-inherited from the GPS Fortran code.
-
-!!! todo
-    Rename to `NumModelSplit2` (keeping a deprecation alias) once the
-    accompanying article is submitted: the current name is applied throughout
-    the examples, so renaming it now would break them.
+Each step applies the exact linear flow over ``Δt/2``, then the exact nonlinear
+flow over ``Δt``, then the exact linear flow over ``Δt/2`` again. The linear
+flow ``exp(i Δt (-coeffΔ ∇² + Ω L_z))`` is computed in Fourier space direction
+by direction (no linear system is solved), and the nonlinear flow
+``exp(-i (V + β |ϕ|²) Δt)`` is exact in physical space.
 
 # Example
 
 ```jldoctest
 julia> param = GrossPitaevskiiParameters(β = 1000, Ω = 0.8, pot = PotentialZero(field));
-julia> nummodel = NumModelADI2(field, param, 0.01, 1000, 100)
+julia> nummodel = NumModelSplit2(field, param, 0.01, 1000, 100)
 Splitting Order 2
   ├───────  time step: 0.01
   └──────────── solve: number of iterations 1000, backup frequency 100
 ```
 """
-function NumModelADI2(f::AbstractField, param::AbstractParameters,
-                      Δt::Real, niter::Integer, freqbckp::Integer)
+function NumModelSplit2(f::AbstractField, param::AbstractParameters,
+                        Δt::Real, niter::Integer, freqbckp::Integer)
     gf = GradientField(f; rotation=true)
     plan = Plan(f)
     writer = WriterVTK(f)
     saver = WriterSave(f)
     writers = WriterCollection([writer, saver])
-    return NumModelADI2{typeof(f),typeof(param),typeof(plan)}(f, gf, param,
-                                                              Δt, niter, freqbckp,
-                                                              plan,
-                                                              writers)
+    return NumModelSplit2{typeof(f),typeof(param),typeof(plan)}(f, gf, param,
+                                                                Δt, niter, freqbckp,
+                                                                plan,
+                                                                writers)
 end
 
-function Base.show(io::IO, n::NumModelADI2)
+function Base.show(io::IO, n::NumModelSplit2)
     return print(io,
                  "Splitting Order 2\n",
                  "  ├───────  time step: $(n.Δt)\n",
                  "  └──────────── solve: number of iterations $(n.niter), backup frequency $(n.freqbckp)")
 end
 
-function timeStep!(n::NumModelADI2)
+function timeStep!(n::NumModelSplit2)
     solveLapRot!(n, n.Δt * 0.5)
     solveNL!(n, n.Δt)
     solveLapRot!(n, n.Δt * 0.5)
     return 2
 end
+
+# Deprecated aliases.
+Base.@deprecate_binding NumModelADI1 NumModelSplit1
+Base.@deprecate_binding NumModelADI2 NumModelSplit2
 
 function solveLapRot!(n::AbstractNumModel{F}, Δtl) where {F<:AbstractField2D}
     # field

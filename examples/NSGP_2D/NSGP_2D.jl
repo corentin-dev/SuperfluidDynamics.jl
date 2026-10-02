@@ -2,7 +2,7 @@
 
 # We simulate the coupled GP–NS two-fluid model of "Coupling Navier-Stokes and
 # Gross-Pitaevskii equations for the numerical simulation of two-fluid quantum
-# flows" (Parnaudeau et al., arXiv:2211.07361), implemented by
+# flows" (Brachet et al., arXiv:2211.07361), implemented by
 # [`NumModelNSGP`](@ref).
 # The superfluid is described by the Gross-Pitaevskii field ``ψ`` and the normal
 # fluid by a Navier-Stokes velocity ``v_n``; the two are coupled through a

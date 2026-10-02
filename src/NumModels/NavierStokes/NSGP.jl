@@ -7,7 +7,7 @@ export NSGPParameters, NumModelNSGP,
 
 Parameters of the coupled GP–NS two-fluid model of "Coupling Navier-Stokes
 and Gross-Pitaevskii equations for the numerical simulation of two-fluid
-quantum flows" (Parnaudeau et al., arXiv:2211.07361), as implemented in the
+quantum flows" (Brachet et al., arXiv:2211.07361), as implemented in the
 GPS Fortran code (`GPS_NS_solver.f90`). Convention identical to the Fortran
 code: `α` is the (negative) GP diffusion coefficient, `β` the GP interaction
 coefficient, and the friction coefficients `B★`,`B'★` are derived from the
@@ -323,7 +323,8 @@ function energy(n::NumModelNSGP, showEnergy=false)
     f = n.fns
     E = 0.0
     for c in 1:length(f.u)
-        E += sum(real.(parent(f.u[c]) .^ 2))
+        # global reduction across MPI ranks (parent() would sum local data)
+        E += sum(real.(f.u[c] .^ 2))
     end
     E *= 0.5 * n.param.ρn * f.g.Δx * f.g.Δy
     if length(f.g.n) == 3

@@ -6,7 +6,7 @@ include("BdG/BdG.jl")
 include("NavierStokes/NavierStokes.jl")
 include("NavierStokes/NSGP.jl")
 
-export NumModelADI1, NumModelADI2, NumModelGPRK
+export NumModelSplit1, NumModelSplit2, NumModelGPRK
 export NumModelRK4Imp
 export NumModelBdG, bdg_mu, bdg_apply!
 export NSGPParameters, NumModelNSGP

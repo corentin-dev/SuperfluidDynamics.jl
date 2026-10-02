@@ -128,13 +128,13 @@ param_insta = GrossPitaevskiiParameters(; coeffΔ=param.coeffΔ,
                                         β=param.β,
                                         pot=PotentialZero(field_insta))
 
-# We instantiate a `NumModelADI2` which corresponds to
-# the second order Strang operator splitting (despite its name, `ADI` here is a historical name from GPS: no direction is solved implicitly).
+# We instantiate a `NumModelSplit2` which corresponds to
+# a second order Strang splitting scheme.
 
 Δt_insta = Δt / 2.5
 niter_insta = 20000
 freqbckp_insta = 400
-nummodel_insta = NumModelADI2(field_insta, param_insta, Δt_insta, niter_insta,
+nummodel_insta = NumModelSplit2(field_insta, param_insta, Δt_insta, niter_insta,
                               freqbckp_insta)
 
 # And we start the solver.

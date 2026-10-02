@@ -60,7 +60,9 @@ function energy(n::AbstractNumModel{F,P},
     f = n.f
     E = 0.0
     for c in 1:length(f.u)
-        E += sum(real.(parent(f.u[c]) .^ 2))
+        # sum over the PencilArray: global reduction across MPI ranks (parent()
+        # would sum only the local rank data).
+        E += sum(real.(f.u[c] .^ 2))
     end
     E /= 2
     for d in (f.g.Δx, f.g.Δy)

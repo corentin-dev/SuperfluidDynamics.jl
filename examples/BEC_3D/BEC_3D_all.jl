@@ -65,14 +65,14 @@ println_parallel(nummodel)
 solve!(nummodel; plot=false, istart=istart)
 istart += niter
 
-# ADI1
-nummodel = NumModelADI1(field, param, Δt, niter, freqbckp)
+# Split1
+nummodel = NumModelSplit1(field, param, Δt, niter, freqbckp)
 println_parallel(nummodel)
 solve!(nummodel; plot=false, istart=istart)
 istart += niter
 
-# ADI2
-nummodel = NumModelADI2(field, param, Δt, niter, freqbckp)
+# Split2
+nummodel = NumModelSplit2(field, param, Δt, niter, freqbckp)
 println_parallel(nummodel)
 solve!(nummodel; plot=false, istart=istart)
 istart += niter

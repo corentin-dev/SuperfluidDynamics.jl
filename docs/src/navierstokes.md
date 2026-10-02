@@ -43,8 +43,8 @@ friction** `F = −½ rb |∇×u_s| (u_n − u_s)` with density weighting `ρs/�
 multiplier, Helmholtz projection and 2/3 dealiasing.
 
 ```@docs
-HBVKParameters
-NumModelHBVK
+HVBKParameters
+NumModelHVBK
 ```
 
 ## References

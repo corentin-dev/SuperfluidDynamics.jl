@@ -1,7 +1,7 @@
-export HBVKParameters, NumModelHBVK
+export HVBKParameters, NumModelHVBK
 
 """
-    HBVKParameters(; ν, νs, rb, ρn, ρs, ρt, filter)
+    HVBKParameters(; ν, νs, rb, ρn, ρs, ρt, filter)
 
 Parameters of the linear Hall–Vinen–Bekarevich–Khalatnikov (HVBK) two-fluid
 model: two incompressible velocity fields (normal `u_n` and superfluid
@@ -19,7 +19,7 @@ viscosities, `rb` the (linear) mutual-friction coefficient, `ρn`,`ρs` the
 densities and `ρt` the total density (defaults to `ρn+ρs`). The friction is an
 internal force: the **total momentum** `ρn u_n + ρs u_s` is conserved.
 """
-mutable struct HBVKParameters <: AbstractParameters
+mutable struct HVBKParameters <: AbstractParameters
     "normal-fluid kinematic viscosity ν_n."
     ν::Real
     "superfluid kinematic viscosity ν_s."
@@ -36,7 +36,7 @@ mutable struct HBVKParameters <: AbstractParameters
     filter::Bool
 end
 
-function HBVKParameters(;
+function HVBKParameters(;
                          ν::Real=0.1,
                          νs::Real=0.01,
                          rb::Real=1.5,
@@ -45,10 +45,10 @@ function HBVKParameters(;
                          ρt::Real=0.0,
                          filter::Bool=true)
     ρt = ρt == 0.0 ? ρn + ρs : ρt
-    return HBVKParameters(ν, νs, rb, ρn, ρs, ρt, filter)
+    return HVBKParameters(ν, νs, rb, ρn, ρs, ρt, filter)
 end
 
-function Base.show(io::IO, p::HBVKParameters)
+function Base.show(io::IO, p::HVBKParameters)
     return print(io,
                  "HVBK (linear two-fluid) parameters\n",
                  "  ├───────  ν: $(p.ν)  νs: $(p.νs)  rb: $(p.rb)\n",
@@ -57,7 +57,7 @@ function Base.show(io::IO, p::HBVKParameters)
 end
 
 """
-    NumModelHBVK(fn, fs, param, Δt, niter, freqbckp; stepper="RK2")
+    NumModelHVBK(fn, fs, param, Δt, niter, freqbckp; stepper="RK2")
 
 Linear HVBK two-fluid model. `fn` is the normal-fluid velocity (2D or 3D vector
 field) and `fs` the superfluid velocity; both must share the same grid and array
@@ -66,7 +66,7 @@ Each fluid's viscous Laplacian is implicit via the exact spectral multiplier
 `exp(-ν Δt |k|²)`, and both fields are Helmholtz-projected (incompressible) and
 2/3-dealiased at every step.
 """
-mutable struct NumModelHBVK{F,P,Plan} <: AbstractNumModel{F,P,Plan}
+mutable struct NumModelHVBK{F,P,Plan} <: AbstractNumModel{F,P,Plan}
     "normal-fluid velocity field."
     fn::F
     "superfluid velocity field."
@@ -130,9 +130,9 @@ mutable struct NumModelHBVK{F,P,Plan} <: AbstractNumModel{F,P,Plan}
     facs::PencilArray
 end
 
-function NumModelHBVK(fn::AbstractField,
+function NumModelHVBK(fn::AbstractField,
                       fs::AbstractField,
-                      param::HBVKParameters,
+                      param::HVBKParameters,
                       Δt::Real, niter::Integer, freqbckp::Integer;
                       stepper::String="RK2")
     @assert fn.g.n == fs.g.n "normal and superfluid fields must share the grid"
@@ -145,7 +145,7 @@ function NumModelHBVK(fn::AbstractField,
     npen = last_pencil(plan)
     bufn() = [PencilArray{FT}(undef, npen) for _ in 1:length(fn.u)]
     bufx() = [PencilArray{FT}(undef, plan.pen_x) for _ in 1:length(fn.u)]
-    n = NumModelHBVK{typeof(fn),typeof(param),typeof(plan)}(
+    n = NumModelHVBK{typeof(fn),typeof(param),typeof(plan)}(
         fn, fs, param, Δt, niter, freqbckp, stepper, plan, writers, writers_s,
         fn,  # f (alias of fn, for solve! / plotting)
         bufn(),  # un_hat
@@ -166,7 +166,7 @@ function NumModelHBVK(fn::AbstractField,
         PencilArray{Float64}(undef, npen),  # facn
         PencilArray{Float64}(undef, npen))  # facs
     gridξ = spectral_grid(n.plan)
-    ksq = _hbk_ksq(gridξ)
+    ksq = _hvbk_ksq(gridξ)
     if ndims(gridξ) == 3
         @. n.facn = exp(-n.param.ν  * n.Δt * ksq(gridξ.x, gridξ.y, gridξ.z))
         @. n.facs = exp(-n.param.νs * n.Δt * ksq(gridξ.x, gridξ.y, gridξ.z))
@@ -180,7 +180,7 @@ function NumModelHBVK(fn::AbstractField,
     return n
 end
 
-function Base.show(io::IO, n::NumModelHBVK)
+function Base.show(io::IO, n::NumModelHVBK)
     return print(io,
                  "HVBK linear two-fluid model ($(n.stepper))\n",
                  "  ├───────  time step: $(n.Δt)\n",
@@ -194,14 +194,15 @@ Total kinetic energy of the two-fluid system
 ``E = ½ ρn ∫|u_n|² + ½ ρs ∫|u_s|² dV``, returned as
 `(E_normal, E_superfluid, 0.0, E_total)` (slot 4 = total).
 """
-function energy(n::NumModelHBVK, showEnergy=false)
+function energy(n::NumModelHVBK, showEnergy=false)
     g = n.fn.g
     dV = g.Δx * g.Δy * (length(g.n) == 3 ? g.Δz : 1.0)
     En = 0.0
     Es = 0.0
     for c in 1:length(n.fn.u)
-        En += sum(abs2.(parent(n.fn.u[c])))
-        Es += sum(abs2.(parent(n.fs.u[c])))
+        # global reductions across MPI ranks (parent() would sum local data)
+        En += sum(abs2.(n.fn.u[c]))
+        Es += sum(abs2.(n.fs.u[c]))
     end
     En *= 0.5 * n.param.ρn * dV
     Es *= 0.5 * n.param.ρs * dV
@@ -211,7 +212,7 @@ function energy(n::NumModelHBVK, showEnergy=false)
     return En, Es, 0.0, En + Es
 end
 
-function _hbk_ksq(gridξ)
+function _hvbk_ksq(gridξ)
     if ndims(gridξ) == 3
         return (x, y, z) -> x^2 + y^2 + z^2
     else
@@ -220,12 +221,12 @@ function _hbk_ksq(gridξ)
 end
 
 """
-    _hbk_project!(n, uhat)
+    _hvbk_project!(n, uhat)
 
 Spectral Helmholtz projection of `uhat` (last-pencil), in-place (reusing
 `n.div_hat` as scratch).
 """
-function _hbk_project!(n::NumModelHBVK, uhat)
+function _hvbk_project!(n::NumModelHVBK, uhat)
     gridξ = spectral_grid(n.plan)
     d = n.div_hat
     @. d = gridξ[1] * uhat[1]
@@ -246,11 +247,11 @@ function _hbk_project!(n::NumModelHBVK, uhat)
 end
 
 """
-    _hbk_dealias!(n, uhat)
+    _hvbk_dealias!(n, uhat)
 
 2/3-rule dealiasing of a spectral vector field (last-pencil), in-place.
 """
-function _hbk_dealias!(n::NumModelHBVK, uhat)
+function _hvbk_dealias!(n::NumModelHVBK, uhat)
     gridξ = spectral_grid(n.plan)
     if ndims(gridξ) == 3
         dealias!(uhat, gridξ.x, gridξ.y, gridξ.z)
@@ -261,12 +262,12 @@ function _hbk_dealias!(n::NumModelHBVK, uhat)
 end
 
 """
-    _hbk_vorticity_phys!(n, ωphys, uhat)
+    _hvbk_vorticity_phys!(n, ωphys, uhat)
 
 Physical vorticity `∇×u` (pen_x) of a spectral velocity `uhat` (last-pencil):
 spectral curl `i k×û` then IFFT.
 """
-function _hbk_vorticity_phys!(n::NumModelHBVK, ωphys, uhat)
+function _hvbk_vorticity_phys!(n::NumModelHVBK, ωphys, uhat)
     gridξ = spectral_grid(n.plan)
     if ndims(gridξ) == 3
         @. n.tmp_hat[1] = 1im * (gridξ.y * uhat[3] - gridξ.z * uhat[2])
@@ -291,7 +292,7 @@ projected** increments (Δt not applied) into `kn` / `ks`:
 with the linear mutual friction `F = -½ rb |ω_s| (u_n - u_s)`. Uses the current
 `n.un_hat` / `n.us_hat`; the model's scratch is overwritten.
 """
-function rhs!(n::NumModelHBVK, kn, ks)
+function rhs!(n::NumModelHVBK, kn, ks)
     p = n.param
     nvel = length(n.fn.u)
     is3 = (nvel == 3)
@@ -299,8 +300,8 @@ function rhs!(n::NumModelHBVK, kn, ks)
     ldiv_all!(n.un_phys, n.plan, n.un_hat)
     ldiv_all!(n.us_phys, n.plan, n.us_hat)
     # vorticities (physical)
-    _hbk_vorticity_phys!(n, n.un_vort, n.un_hat)
-    _hbk_vorticity_phys!(n, n.us_vort, n.us_hat)
+    _hvbk_vorticity_phys!(n, n.un_vort, n.un_hat)
+    _hvbk_vorticity_phys!(n, n.us_vort, n.us_hat)
     # |ω_s| (physical, real)
     if is3
         omag = @. sqrt(real(n.us_vort[1])^2 + real(n.us_vort[2])^2 +
@@ -331,11 +332,11 @@ function rhs!(n::NumModelHBVK, kn, ks)
     mul_all!(kn, n.plan, n.rhs_n)
     mul_all!(ks, n.plan, n.rhs_s)
     if p.filter
-        _hbk_dealias!(n, kn)
-        _hbk_dealias!(n, ks)
+        _hvbk_dealias!(n, kn)
+        _hvbk_dealias!(n, ks)
     end
-    _hbk_project!(n, kn)
-    _hbk_project!(n, ks)
+    _hvbk_project!(n, kn)
+    _hvbk_project!(n, ks)
     return nothing
 end
 
@@ -350,7 +351,7 @@ intermediate state. Both fields are Helmholtz-projected and (if `param.filter`)
 2/3-dealiased after the update. The canonical fields `fn.u` / `fs.u` are
 synchronised.
 """
-function timeStep!(n::NumModelHBVK)
+function timeStep!(n::NumModelHVBK)
     Δt = n.Δt
     nvel = length(n.fn.u)
     facn, facs = n.facn, n.facs
@@ -363,8 +364,8 @@ function timeStep!(n::NumModelHBVK)
             @. n.un_hat[c] = (n.un_hat[c] + Δt * n.k1n[c]) * facn
             @. n.us_hat[c] = (n.us_hat[c] + Δt * n.k1s[c]) * facs
         end
-        _hbk_project!(n, n.un_hat)
-        _hbk_project!(n, n.us_hat)
+        _hvbk_project!(n, n.un_hat)
+        _hvbk_project!(n, n.us_hat)
     elseif n.stepper == "RK2"
         # --- Step I: viscous-weighted Euler sub-step ---
         #   k1 = P(NL(u0)) ;  k1 ← k1·e^{-νΔt|k|²} ;  u1 = u0·e^{-νΔt|k|²} + Δt·k1
@@ -375,8 +376,8 @@ function timeStep!(n::NumModelHBVK)
             @. n.stage[c]   = n.un_hat[c] * facn + Δt * n.k1n[c]
             @. n.stage_s[c] = n.us_hat[c] * facs + Δt * n.k1s[c]
         end
-        _hbk_project!(n, n.stage)
-        _hbk_project!(n, n.stage_s)
+        _hvbk_project!(n, n.stage)
+        _hvbk_project!(n, n.stage_s)
         # --- Step II: corrective derivative at the intermediate state ---
         # Reference (calcVelocity_forced_04):  u_new = u1 + 0.5*dt*(-k1 + k2)
         copyto!(n.un_hat, n.stage)
@@ -386,19 +387,23 @@ function timeStep!(n::NumModelHBVK)
             @. n.un_hat[c] = n.stage[c]   + 0.5 * Δt * (n.k2n[c] - n.k1n[c])
             @. n.us_hat[c] = n.stage_s[c] + 0.5 * Δt * (n.k2s[c] - n.k1s[c])
         end
-        _hbk_project!(n, n.un_hat)
-        _hbk_project!(n, n.us_hat)
+        _hvbk_project!(n, n.un_hat)
+        _hvbk_project!(n, n.us_hat)
     else
-        throw(ArgumentError("HBVK stepper \"$(n.stepper)\" unknown (use \"RK1\" or \"RK2\")."))
+        throw(ArgumentError("HVBK stepper \"$(n.stepper)\" unknown (use \"RK1\" or \"RK2\")."))
     end
 
     # --- 2/3 dealiasing of the states (as in the Fortran step) ---
     if n.param.filter
-        _hbk_dealias!(n, n.un_hat)
-        _hbk_dealias!(n, n.us_hat)
+        _hvbk_dealias!(n, n.un_hat)
+        _hvbk_dealias!(n, n.us_hat)
     end
     # sync the canonical physical fields
     ldiv_all!(n.fn.u, n.plan, n.un_hat)
     ldiv_all!(n.fs.u, n.plan, n.us_hat)
     return 0
 end
+
+# Deprecated aliases (misspelling of the model name).
+Base.@deprecate_binding HBVKParameters HVBKParameters
+Base.@deprecate_binding NumModelHBVK NumModelHVBK

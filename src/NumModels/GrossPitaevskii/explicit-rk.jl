@@ -8,9 +8,9 @@ equation, in 2D and 3D:
 
 where `V` is the external potential, `β` the interaction strength and
 `L_z = (y ∂x − x ∂y)` the rotation operator. This is the **explicit**
-counterpart of the package's implicit real-time schemes (CrankNicolsonT,
-ADI1/2) and a port of the reference GPS `GP_RK4` (`"UnsteadyRK4"`) time
-integrator. `stepper` ∈ `"RK1"`, `"RK2"`, `"RK4"`:
+counterpart of the package's implicit and splitting real-time schemes
+(CrankNicolsonT, Split1/2) and a port of the reference GPS `GP_RK4`
+(`"UnsteadyRK4"`) time integrator. `stepper` ∈ `"RK1"`, `"RK2"`, `"RK4"`:
 
 - `"RK1"` — forward Euler (1st order);
 - `"RK2"` — explicit midpoint (2nd order);

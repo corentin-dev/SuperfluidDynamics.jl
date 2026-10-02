@@ -575,6 +575,69 @@ end
     @test mass_rel("RK4", 0.004, 0.2, 2.0) < 1e-7
 end
 
+# Imaginary-time solvers: in the strong-interaction (Thomas-Fermi) regime, the
+# ground state of the 2D harmonic trap V = (x² + y²)/2 is analytic: the TF
+# chemical potential is μ_TF = √(β/π) and the TF energy E_TF = 2 μ_TF / 3
+# (the residual few-per-cent difference with the numerical state is the kinetic
+# correction, which TF neglects). Each imaginary-time solver must decrease the
+# energy from a generic (Gaussian) initial state and reach that value.
+@testset "GP imaginary time: Thomas-Fermi ground state (2D)" begin
+    function ground_state(model; N=48, L=10.0, β=400.0, Δt=0.02, niter=1500)
+        grid = Grid((N, N), ((-L, L), (-L, L)))
+        field = Field(grid, ComplexField())
+        X = reshape(vec(field.x), :, 1); Y = reshape(vec(field.y), 1, :)
+        @. field.ϕ = exp(-0.5 * (X^2 + Y^2))
+        normalize!(field)
+        param = GrossPitaevskiiParameters(coeffΔ=-0.5, β=β, Ω=0.0,
+                                         pot=PotentialQuadratic(field, γx=1.0, γy=1.0))
+        n = model(field, param, Δt, niter, 10 * niter)
+        e0 = SuperfluidDynamics.energy(n)[4]
+        SuperfluidDynamics.solve!(n; plot=false)
+        EΩ, EΔ, Eβ, e1 = SuperfluidDynamics.energy(n)
+        mass = sum(abs2.(field.ϕ)) * grid.Δx * grid.Δy
+        μtf = sqrt(β / π)
+        return e0, e1, abs(e1 - 2μtf / 3) / (2μtf / 3), mass
+    end
+    for model in (NumModelBackwardEuler, NumModelBackwardEulerNoPrecond,
+                  NumModelCrankNicolson, NumModelCrankNicolsonQuasiNewton)
+        e0, e1, dE, mass = ground_state(model)
+        @test e1 < e0            # imaginary time decreases the energy
+        @test dE < 0.03          # reaches the analytic Thomas-Fermi energy
+        @test abs(mass - 1.0) < 1e-8   # the norm constraint is preserved
+    end
+end
+
+# Splitting schemes: on a periodic box with V = 0 and Ω = 0, two successive
+# refinements of the time step give the observed order (1 for Lie, 2 for
+# Strang). The exact phase flows make the mass conservation exact, which
+# discriminates the splitting from a generic explicit integrator.
+@testset "GP splitting: time order and exact mass conservation (2D)" begin
+    function run_split(order, nsteps; N=32, L=2π, β=20.0, T=0.2)
+        Δt = T / nsteps
+        grid = Grid((N, N), ((-L, L), (-L, L)))
+        field = Field(grid, ComplexField())
+        X = reshape(vec(field.x), :, 1); Y = reshape(vec(field.y), 1, :)
+        @. field.ϕ = (1 + 0.3 * cos(X) + 0.2 * sin(2Y)) * exp(1im * 0.5X)
+        normalize!(field)
+        param = GrossPitaevskiiParameters(coeffΔ=-0.5, β=β, Ω=0.0, pot=PotentialZero(field))
+        n = order == 1 ? NumModelSplit1(field, param, Δt, nsteps, 10 * nsteps) :
+                         NumModelSplit2(field, param, Δt, nsteps, 10 * nsteps)
+        for _ in 1:nsteps
+            SuperfluidDynamics.timeStep!(n)
+        end
+        return copy(field.ϕ), sum(abs2.(field.ϕ))
+    end
+    for (order, lo, hi) in ((1, 0.85, 1.15), (2, 1.85, 2.15))
+        nsteps = order == 1 ? (50, 100, 200) : (25, 50, 100)
+        runs = [run_split(order, k) for k in nsteps]
+        d = [sqrt(sum(abs2.(runs[i][1] .- runs[i + 1][1])) /
+                  sum(abs2.(runs[i + 1][1]))) for i in 1:2]
+        @test lo < log2(d[1] / d[2]) < hi
+        masses = [r[2] for r in runs]
+        @test maximum(abs.(masses .- masses[1])) < 1e-12
+    end
+end
+
 # ==========================================================================
 # 3D vector field: FFT round-trip (NS velocity field, ndims=3)
 # ==========================================================================
@@ -1129,8 +1192,8 @@ end
     @. fn.uy = -cos(ky * fn.y) * sin(kx * fn.x)
     @. fs.ux = 0.7 * cos(ky * fs.y) * sin(kx * fs.x)
     @. fs.uy = 0.7 * sin(ky * fs.y) * cos(kx * fs.x)
-    p = HBVKParameters(; ν=0.01, νs=0.001, rb=1.5, ρn=1.0, ρs=1.0)
-    n = NumModelHBVK(fn, fs, p, 0.01, 40, 1; stepper="RK2")
+    p = HVBKParameters(; ν=0.01, νs=0.001, rb=1.5, ρn=1.0, ρs=1.0)
+    n = NumModelHVBK(fn, fs, p, 0.01, 40, 1; stepper="RK2")
     mom() = [p.ρn * real(sum(parent(fn.u[c]))) + p.ρs * real(sum(parent(fs.u[c]))) for c in 1:2]
     P0 = mom()
     # natural momentum scale (the conserved k=0 mode is ~0, so normalise by this)
@@ -1162,8 +1225,8 @@ end
     @. fn.uy = -cos(ky * fn.y) * sin(kx * fn.x)
     @. fs.ux = 0.0
     @. fs.uy = 0.0
-    p = HBVKParameters(; ν=0.01, νs=0.01, rb=0.0, ρn=1.0, ρs=1.0)
-    n = NumModelHBVK(fn, fs, p, 0.01, 20, 1; stepper="RK2")
+    p = HVBKParameters(; ν=0.01, νs=0.01, rb=0.0, ρn=1.0, ρs=1.0)
+    n = NumModelHVBK(fn, fs, p, 0.01, 20, 1; stepper="RK2")
     for _ in 1:20
         SuperfluidDynamics.timeStep!(n)
     end
@@ -1185,9 +1248,9 @@ end
     @. fs.ux = 0.7 * cos(ky * fs.y) * sin(kx * fs.x)
     @. fs.uy = 0.7 * sin(ky * fs.y) * cos(kx * fs.x)
     @. fs.uz = 0.3 * sin(kz * fs.z)
-    p = HBVKParameters(; ν=0.01, νs=0.001, rb=1.5, ρn=1.0, ρs=1.0)
+    p = HVBKParameters(; ν=0.01, νs=0.001, rb=1.5, ρn=1.0, ρs=1.0)
     for stepper in ("RK1", "RK2")
-        n = NumModelHBVK(fn, fs, p, 0.008, 6, 1; stepper=stepper)
+        n = NumModelHVBK(fn, fs, p, 0.008, 6, 1; stepper=stepper)
         mom() = [p.ρn * real(sum(parent(fn.u[c]))) + p.ρs * real(sum(parent(fs.u[c]))) for c in 1:3]
         P0 = mom()
         Pscale = (grid.n[1] * grid.Δx * grid.Δy * grid.Δz) * (maximum(abs.(parent(fn.ux))) + maximum(abs.(parent(fs.ux))))

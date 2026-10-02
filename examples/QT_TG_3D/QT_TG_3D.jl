@@ -135,13 +135,13 @@ param_insta = GrossPitaevskiiParameters(; coeffΔ=param.coeffΔ,
                                         β=param.β,
                                         pot=PotentialZero(field_insta))
 
-# We instantiate a `NumModelADI2` which corresponds to
+# We instantiate a `NumModelSplit2` which corresponds to
 # a second order Strangle scheme.
 
 Δt_insta = Δt
 niter_insta = 1000
 freqbckp_insta = 10
-nummodel_insta = NumModelADI2(field_insta, param_insta, Δt_insta, niter_insta,
+nummodel_insta = NumModelSplit2(field_insta, param_insta, Δt_insta, niter_insta,
                               freqbckp_insta)
 
 # And we start the solver.

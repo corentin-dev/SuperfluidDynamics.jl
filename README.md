@@ -7,7 +7,7 @@
 
 > **The official repository is hosted on [plmlab.math.cnrs.fr](https://plmlab.math.cnrs.fr/lothode/SuperfluidDynamics.jl).** Please open issues and merge requests there.
 
-This is a package allowing simulation of superfluids. The first intention of this package is to solve the Gross-Pitaevskii equation to simulation Bose-Einstein Condensates. It evolved into a more advance package in order to solve Quantum-Turbulence. It now also solves the incompressible Navier-Stokes equations, the coupled Gross-Pitaevskii / Navier-Stokes two-fluid model of Parnaudeau et al. (NSGP), and the linear Hall-Vinen-Bekarevich-Khalatnikov (HVBK) two-fluid model. Derivatives are estimated through Fourier transformations or finite differences.
+This is a package allowing simulation of superfluids. The first intention of this package is to solve the Gross-Pitaevskii equation to simulation Bose-Einstein Condensates. It evolved into a more advance package in order to solve Quantum-Turbulence. It now also solves the incompressible Navier-Stokes equations, the coupled Gross-Pitaevskii / Navier-Stokes two-fluid model of Brachet et al. (NSGP), and the linear Hall-Vinen-Bekarevich-Khalatnikov (HVBK) two-fluid model. Derivatives are estimated through Fourier transformations or finite differences.
 
 In order to be parallel (distributed), this package exploits intensively `PencilArrays`. Most of the package is written using broadcast, and is compatible with both CPU arrays (`Array`) and CUDA arrays (`CuArray`). It was not tested for other array type, yet. Every array creation is inferred from the `Grid` array type.
 
@@ -15,11 +15,11 @@ This package is authored by Corentin Lothodé, and largely inspired by GPS, a Fo
 
 ## Models
 
-- **Gross-Pitaevskii**: imaginary time (backward Euler, Crank-Nicolson) and real time (time-dependent Crank-Nicolson, Lie/Strang operator splitting), plus an external-velocity solver. See `NumModelBackwardEuler`, `NumModelCrankNicolson`, `NumModelCrankNicolsonT`, `NumModelADI1`/`NumModelADI2` (operator splittings, kept under their historical `ADI` name from GPS), `NumModelExternalVelocity`.
+- **Gross-Pitaevskii**: imaginary time (backward Euler, Crank-Nicolson) and real time (time-dependent Crank-Nicolson, first and second order operator splitting), plus an external-velocity solver. See `NumModelBackwardEuler`, `NumModelCrankNicolson`, `NumModelCrankNicolsonT`, `NumModelSplit1`, `NumModelSplit2`, `NumModelExternalVelocity`.
 - **Bogoliubov-de Gennes** (`NumModelBdG`): matrix-free eigensolver for the linearized excitations about a stationary GP state. The `2N x 2N` operator is applied through the derivative machinery (no dense matrix); the zero mode is rejected by overlap with `(ψ₀, ψ₀*)` and the modes are returned symplectically normalized.
 - **Navier-Stokes** (incompressible, 2D and 3D): semi-implicit RK4 solver `NumModelRK4Imp` (vorticity-advection form, exact implicit viscous multiplier, spectral Helmholtz projection).
-- **NSGP** (coupled GP/Navier-Stokes two-fluid model of Parnaudeau et al., `NumModelNSGP`): a non-stationary Gross-Pitaevskii equation for the superfluid wavefunction coupled, through the Coste coupling, to a forced Navier-Stokes equation for the normal fluid (one-way or two-way).
-- **HVBK** (linear two-fluid model, `NumModelHBVK`): two incompressible velocity fields coupled by the linear mutual friction `F = -1/2 rb |∇×u_s| (u_n - u_s)`, total momentum conserved.
+- **NSGP** (coupled GP/Navier-Stokes two-fluid model of Brachet et al., `NumModelNSGP`): a non-stationary Gross-Pitaevskii equation for the superfluid wavefunction coupled, through the Coste coupling, to a forced Navier-Stokes equation for the normal fluid (one-way or two-way).
+- **HVBK** (linear two-fluid model, `NumModelHVBK`): two incompressible velocity fields coupled by the linear mutual friction `F = -1/2 rb |∇×u_s| (u_n - u_s)`, total momentum conserved.
 
 ## Get package
 

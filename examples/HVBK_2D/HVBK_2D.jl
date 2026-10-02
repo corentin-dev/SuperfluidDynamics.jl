@@ -2,7 +2,7 @@
 
 # We simulate the linear [HVBK two-fluid
 # model](https://en.wikipedia.org/wiki/Two-fluid_model) with
-# [`NumModelHBVK`](@ref). It describes a classical normal fluid `u_n` and an
+# [`NumModelHVBK`](@ref). It describes a classical normal fluid `u_n` and an
 # inviscid superfluid `u_s`, each advecting its own vorticity and coupled by the
 # **linear** mutual-friction force ``F = -\tfrac12 r_b |w| (u_n - u_s)``
 # where ``w = u_n - u_s`` is the relative velocity. The normal-fluid viscosity
@@ -47,10 +47,10 @@ kx = 2π / grid.Lx; ky = 2π / grid.Ly
 
 # ## Parameters
 
-# [`HBVKParameters`](@ref): `ν` the normal viscosity, `νs` the (negligible)
+# [`HVBKParameters`](@ref): `ν` the normal viscosity, `νs` the (negligible)
 # superfluid viscosity, `rb` the mutual-friction coefficient, `ρn`/`ρs` the two masses.
 
-param = HBVKParameters(; ν=0.01, νs=0.001, rb=1.5, ρn=1.0, ρs=1.0)
+param = HVBKParameters(; ν=0.01, νs=0.001, rb=1.5, ρn=1.0, ρs=1.0)
 
 # ## Solver
 
@@ -60,7 +60,7 @@ param = HBVKParameters(; ν=0.01, νs=0.001, rb=1.5, ρn=1.0, ρs=1.0)
 niter = 400
 freqbckp = 100
 
-model = NumModelHBVK(fn, fs, param, Δt, niter, freqbckp; stepper="RK2")
+model = NumModelHVBK(fn, fs, param, Δt, niter, freqbckp; stepper="RK2")
 
 # The scalar (2D) vorticity is computed spectrally the same way as inside the
 # model — `ω = i(k_x u_y − k_y u_x)` — reusing the model's pre-allocated

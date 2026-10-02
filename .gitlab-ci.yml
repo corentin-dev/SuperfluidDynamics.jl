@@ -72,12 +72,14 @@ test:
     # $(pwd) keeps this namespace-independent.
     - git config --global --add safe.directory "$(pwd)"
   script:
-    # Deps are already installed + precompiled in the image. The test
-    # environment (test/Project.toml) resolves its path dependency on the
-    # package when julia is started with a file project under test/ (below),
-    # so there is nothing to instantiate here.
+    # Deps are already installed + precompiled in the image, so there is
+    # nothing to instantiate here. Test dependencies (Test) are declared in
+    # [extras]/[targets] of Project.toml, which also makes
+    # `Pkg.test("SuperfluidDynamics")` (i.e. `]test` from a registry install)
+    # work from the root environment.
     - julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
-    - julia --project test/runtests.jl
+    - julia --project=. test/runtests.jl
+    - julia -e 'using Pkg; Pkg.test()'
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"

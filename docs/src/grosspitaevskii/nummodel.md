@@ -14,8 +14,8 @@ NumModelCrankNicolsonQuasiNewton
 ### Real time
 
 ```@docs
-NumModelADI1
-NumModelADI2
+NumModelSplit1
+NumModelSplit2
 NumModelCrankNicolsonT
 NumModelCrankNicolsonQuasiNewtonT
 NumModelGPRK

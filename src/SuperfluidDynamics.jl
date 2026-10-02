@@ -19,6 +19,6 @@ include("Parameters/Parameters.jl")
 include("Inits/Inits.jl")
 include("IO/IO.jl")
 include("NumModels/NumModels.jl")
-include("HBVK/HBVK.jl")
+include("HVBK/HVBK.jl")
 
 end # module

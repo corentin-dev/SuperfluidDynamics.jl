@@ -141,13 +141,15 @@ function energy(n::NumModelBdG, showEnergy=false)
     V = n.param.pot.V
     computeDerivatives!(n.gf, n.plan, ϕ)
     dv = n.f.g.Δx * n.f.g.Δy * (ndims(parent(ϕ)) == 3 ? n.f.g.Δz : 1.0)
-    EΩ = real(sum(im .* conj.(parent(ϕ)) .* (Ω .* (n.gf.rx .+ n.gf.ry)))) * dv
+    # sums over PencilArrays reduce across MPI ranks (parent() would sum the
+    # local rank data only)
+    EΩ = real(sum(im .* conj.(ϕ) .* (Ω .* (n.gf.rx .+ n.gf.ry)))) * dv
     lap = n.gf.ddx + n.gf.ddy
     if ndims(parent(ϕ)) == 3
         lap = lap + n.gf.ddz
     end
-    EΔ = real(sum(conj.(parent(ϕ)) .* (n.param.coeffΔ * lap + V .* parent(ϕ)))) * dv
-    Eβ = 0.5 * β * real(sum(abs2.(parent(ϕ)) .^ 2)) * dv
+    EΔ = real(sum(conj.(ϕ) .* (n.param.coeffΔ * lap + V .* ϕ))) * dv
+    Eβ = 0.5 * β * real(sum(abs2.(ϕ) .^ 2)) * dv
     E = -EΩ + EΔ + Eβ
     if showEnergy
         println_parallel("BdG stationary-state energy: $(E)")
@@ -192,7 +194,7 @@ function bdg_mu(n::NumModelBdG)
         hψ = @. hψ - n.param.Ω * im * (n.gf.rx + n.gf.ry)
     end
     dv = n.f.g.Δx * n.f.g.Δy * (ndims(parent(ψ)) == 3 ? n.f.g.Δz : 1.0)
-    return real(sum(conj.(parent(ψ)) .* parent(hψ))) * dv / (sum(abs2.(parent(ψ))) * dv)
+    return real(sum(conj.(ψ) .* hψ)) * dv / (sum(abs2.(ψ)) * dv)
 end
 
 """

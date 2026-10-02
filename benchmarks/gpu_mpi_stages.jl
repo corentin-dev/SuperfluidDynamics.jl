@@ -14,7 +14,11 @@ comm = MPI.COMM_WORLD
 rank = MPI.Comm_rank(comm)
 nranks = MPI.Comm_size(comm)
 
-local_id = parse(Int, get(ENV, "SLURM_LOCALID", string(rank)))
+# True local rank via MPI-3 shared-node split: SLURM_LOCALID is not exported
+# to tasks when HYDRA (MPICH_jll's mpiexec) is the launcher, and using the
+# global rank pinned BOTH ranks to device 0.
+local_comm = MPI.Comm_split_type(comm, MPI.COMM_TYPE_SHARED, rank)
+local_id = MPI.Comm_rank(local_comm)
 vis = get(ENV, "CUDA_VISIBLE_DEVICES", "")
 if !isempty(vis)
     gpu_list = split(vis, ',')

@@ -19,7 +19,11 @@ nranks = MPI.Comm_size(comm)
 
 # Pin one device per local rank before CUDA is imported (the node has two GPUs
 # per node here; without this both ranks share device 0).
-local_id = parse(Int, get(ENV, "SLURM_LOCALID", string(rank)))
+# True local rank via MPI-3 shared-node split: SLURM_LOCALID is not exported
+# to tasks when HYDRA (MPICH_jll's mpiexec) is the launcher, and using the
+# global rank pinned BOTH ranks to device 0.
+local_comm = MPI.Comm_split_type(comm, MPI.COMM_TYPE_SHARED, rank)
+local_id = MPI.Comm_rank(local_comm)
 vis = get(ENV, "CUDA_VISIBLE_DEVICES", "")
 gpu_list = isempty(vis) ? nothing : split(vis, ',')
 if gpu_list !== nothing

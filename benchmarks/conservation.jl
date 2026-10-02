@@ -1,15 +1,18 @@
 # Conservation check: long inviscid/nondissipative runs, drift of invariants.
 # Answers "does the integrator hold what it should hold" — for the paper's
-# validation section. One model per run, selected by MODEL=ns|gp.
+# validation section. One model per run, selected by MODEL=ns|gp|hvbk.
 #
 #   MODEL=ns N=96  STEPS=2000 julia --project=. -t8 -O3 benchmarks/conservation.jl
 #   MODEL=gp N=128 STEPS=2000 julia --project=. -t8 -O3 benchmarks/conservation.jl
+#   MODEL=hvbk N=64 STEPS=2000 julia --project=. -t8 -O3 benchmarks/conservation.jl
 #
 # Expected behaviour (dt is fixed per model below):
 #   ns (inviscid Taylor-Green, RK4): kinetic energy constant to ~1e-8 over the
 #     run (no explicit dissipation; drift is integration error).
 #   gp (Strang-2, defocusing): norm to machine precision by construction;
 #     energy oscillates with bounded amplitude ~O(dt^2), no linear drift.
+#   hvbk (two-fluid, nu>0): energy is NOT conserved (mutual friction + normal
+#     viscosity dissipate); the check is monotone decay and no blow-up/NaN.
 # Prints one line per CHECKPOINT fraction of E/E0 and N/N0, so drift and
 # oscillation are distinguishable from the log.
 
@@ -29,6 +32,22 @@ if MODEL == "ns"
     taylor_green!(field, field.x, field.y, field.z)
     model = NumModelRK4Imp(field, NavierStokesParameters(; ν=0.0), dt, 1, 1)
     inv0 = (energy(model)[4], nothing)  # [4] = total energy (NS and GP)
+elseif MODEL == "hvbk"
+    dt = 0.01
+    grid = Grid((N, N, N), ((-2π, 2π), (-2π, 2π), (-2π, 2π)))
+    fn_ = Field(grid, ComplexField(); ndims=3)
+    fs_ = Field(grid, ComplexField(); ndims=3)
+    # taylor_green! is divergence-free by construction (package kernel); the
+    # superfluid counter-flow is a scaled copy, so both fields survive the
+    # spectral projection (no spurious initial energy drop).
+    taylor_green!(fn_, fn_.x, fn_.y, fn_.z)
+    @. fs_.ux = -0.7 * fn_.ux
+    @. fs_.uy = -0.7 * fn_.uy
+    @. fs_.uz = 0.0
+    model = NumModelHVBK(fn_, fs_, HVBKParameters(; ν=0.01, νs=0.001, rb=1.5,
+                                                  ρn=1.0, ρs=1.0),
+                         dt, 1, 1; stepper="RK2")
+    inv0 = (energy(model)[4], nothing)
 elseif MODEL == "gp"
     dt = 0.005
     grid = Grid((N, N, N), ((-π, π), (-π, π), (-π, π)))
@@ -52,6 +71,7 @@ for s in 1:STEPS
     SuperfluidDynamics.timeStep!(model)
     if s % period == 0
         E = energy(model)[4]
+        isfinite(E) || (@printf("  step=%-6d E=%s NON FINI\n", s, E); break)
         if inv0[2] === nothing
             @printf("  step=%-6d E/E0=%.10f\n", s, E / inv0[1])
         else

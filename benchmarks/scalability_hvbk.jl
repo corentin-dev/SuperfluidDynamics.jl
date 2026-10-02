@@ -25,14 +25,12 @@ grid = Grid((N, N, N), ((-2π, 2π), (-2π, 2π), (-2π, 2π)))
 fn = Field(grid, ComplexField(); ndims=3)   # normal fluid
 fs = Field(grid, ComplexField(); ndims=3)   # superfluid
 
-# Divergence-free counter-rotating modes: relative motion, so mutual friction
-# does real work at every step (same initialisation as the HVBK_2D example).
-kx = 2π / grid.Lx; ky = 2π / grid.Ly; kz = 2π / grid.Lz
-@. fn.ux = sin(ky * fn.y) * cos(kx * fn.x) * cos(kz * fn.z)
-@. fn.uy = -cos(ky * fn.y) * sin(kx * fn.x) * cos(kz * fn.z)
-@. fn.uz = 0.0
-@. fs.ux = 0.7 * cos(ky * fs.y) * sin(kx * fs.x) * cos(kz * fs.z)
-@. fs.uy = 0.7 * sin(ky * fs.y) * cos(kx * fs.x) * cos(kz * fs.z)
+# taylor_green! is divergence-free by construction; the superfluid takes a
+# scaled counter-flow, so both fields survive the spectral projection and the
+# relative motion keeps mutual friction doing work at every step.
+taylor_green!(fn, fn.x, fn.y, fn.z)
+@. fs.ux = -0.7 * fn.ux
+@. fs.uy = -0.7 * fn.uy
 @. fs.uz = 0.0
 
 param = HVBKParameters(; ν=0.01, νs=0.001, rb=1.5, ρn=1.0, ρs=1.0)

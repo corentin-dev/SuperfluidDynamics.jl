@@ -1,6 +1,6 @@
 # Conservation check: long inviscid/nondissipative runs, drift of invariants.
 # Answers "does the integrator hold what it should hold" — for the paper's
-# validation section. One model per run, selected by MODEL=ns|gp|hvbk.
+# validation section. One model per run, selected by MODEL=ns|gp|hvbk|nsgp.
 #
 #   MODEL=ns N=96  STEPS=2000 julia --project=. -t8 -O3 benchmarks/conservation.jl
 #   MODEL=gp N=128 STEPS=2000 julia --project=. -t8 -O3 benchmarks/conservation.jl
@@ -13,6 +13,8 @@
 #     energy oscillates with bounded amplitude ~O(dt^2), no linear drift.
 #   hvbk (two-fluid, nu>0): energy is NOT conserved (mutual friction + normal
 #     viscosity dissipate); the check is monotone decay and no blow-up/NaN.
+#   nsgp (2D two-fluid, nu>0): same expectation as hvbk (monotone decay of the
+#     reported kinetic energy, no NaN).
 # Prints one line per CHECKPOINT fraction of E/E0 and N/N0, so drift and
 # oscillation are distinguishable from the log.
 
@@ -47,6 +49,26 @@ elseif MODEL == "hvbk"
     model = NumModelHVBK(fn_, fs_, HVBKParameters(; ν=0.01, νs=0.001, rb=1.5,
                                                   ρn=1.0, ρs=1.0),
                          dt, 1, 1; stepper="RK2")
+    inv0 = (energy(model)[4], nothing)
+elseif MODEL == "nsgp"
+    # 2D setup of the NSGP_2D example: regularised vortex + Taylor-Green.
+    dt = 0.002
+    grid = Grid((N, N), ((-8, 8), (-8, 8)))
+    fgp_ = Field(grid, ComplexField(); ndims=2)
+    fns_ = Field(grid, ComplexField(); ndims=2)
+    aa = 0.8
+    X2 = reshape(vec(fgp_.x), :, 1)
+    Y2 = reshape(vec(fgp_.y), 1, :)
+    r2 = X2.^2 .+ Y2.^2
+    fgp_.ϕ .= (sqrt.(r2) ./ sqrt.(r2 .+ aa^2)) .* exp.(1im * atan.(Y2, X2))
+    kx = 2π / grid.Lx; ky = 2π / grid.Ly
+    @. fns_.ux = 0.3 * sin(ky * fns_.y) * cos(kx * fns_.x)
+    @. fns_.uy = -0.3 * cos(ky * fns_.y) * sin(kx * fns_.x)
+    model = NumModelNSGP(fgp_, fns_,
+                         NSGPParameters(; α=-0.02, ν=0.01, β=1.0, ρn=0.5, ρs=0.5,
+                                        Btab=0.4, Bptab=0.1, ξ=1.0, ε2=0.05,
+                                        one_way=true),
+                         dt, 1, 1; stepper="RK2Imp")
     inv0 = (energy(model)[4], nothing)
 elseif MODEL == "gp"
     dt = 0.005

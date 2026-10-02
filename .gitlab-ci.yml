@@ -42,7 +42,7 @@ build-image:
     - export TAG="sha-$CI_COMMIT_SHORT_SHA"
     # Content hash of the image inputs (no git needed): unchanged inputs
     # re-tag the existing image instead of rebuilding.
-    - export FILEHASH=$(cat Dockerfile Project.toml Manifest.toml test/Project.toml | sha256sum | cut -d" " -f1)
+    - export FILEHASH=$(cat Dockerfile Project.toml Manifest.toml | sha256sum | cut -d" " -f1)
     - echo "$CI_REGISTRY_PASSWORD" | buildah login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
     - |
       # Flags used in this runner's pod (same as the existing in-house

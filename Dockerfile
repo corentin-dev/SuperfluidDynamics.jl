@@ -42,16 +42,11 @@ ENV JULIA_MPI_BINARY=system \
     JULIA_HDF5_PATH=/usr/lib/x86_64-linux-gnu/hdf5/openmpi/
 RUN julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate(); Pkg.build()'
 
-# --- test environment (test/Project.toml: Test + path-dep on the package) ----
-# SuperfluidDynamics is referenced by UUID in test/Project.toml; Pkg only infers the
-# path dependency on the parent project when the active project is reached
-# through a FILE path under test/ (`julia --project test/xxx.jl`), not via
-# Pkg.activate("test"). A small script `using` the test-env packages both
-# resolves the environment and precompiles it, without running the suite.
-COPY test/Project.toml test/Project.toml
-RUN printf 'using Test\nusing SuperfluidDynamics\nusing PencilArrays: localgrid\n' > test/_precompile.jl \
-    && julia --project test/_precompile.jl \
-    && rm test/_precompile.jl
+# --- test environment --------------------------------------------------------
+# Test dependencies live in [extras]/[targets] of the root Project.toml, so the
+# test environment is the root environment: precompiling the package is enough
+# for both `julia --project=. test/runtests.jl` and `Pkg.test()`.
+RUN julia -e 'using Pkg; Pkg.activate("."); Pkg.precompile()'
 
 # --- documentation stack (installed into the root environment, as CI does) ---
 RUN julia -e 'using Pkg; Pkg.activate("."); \

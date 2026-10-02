@@ -21,6 +21,7 @@ comm = MPI.COMM_WORLD
 rank = MPI.Comm_rank(comm)
 nranks = MPI.Comm_size(comm)
 
+# A 3D field takes the 2D (pencil) decomposition; MPITopo1D is for 2D grids.
 grid = Grid((N, N, N), ((-2π, 2π), (-2π, 2π), (-2π, 2π)))
 field = Field(grid, ComplexField(); ndims=3)
 n = NumModelRK4Imp(field, NavierStokesParameters(; ν=0.0), 0.01, 1, 1)

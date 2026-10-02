@@ -40,7 +40,9 @@ The linear HVBK two-fluid model [3]: two incompressible velocity fields (normal 
 superfluid), each advecting its own vorticity, coupled by the **linear mutual
 friction** `F = −½ rb |∇×u_s| (u_n − u_s)` with density weighting `ρs/ρt` and
 `−ρn/ρt` (the total momentum is conserved). RK1/RK2, exact implicit viscous
-multiplier, Helmholtz projection and 2/3 dealiasing.
+multiplier, Helmholtz projection and 2/3 dealiasing. The implementation covers
+the model above only: the nonlinear Iksada friction and the transverse
+Anisov–Peiris–Pitaevskii term of [3] are not implemented.
 
 ```@docs
 HVBKParameters

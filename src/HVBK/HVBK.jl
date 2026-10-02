@@ -18,6 +18,10 @@ F = -½ rb |∇×u_s| (u_n - u_s)
 viscosities, `rb` the (linear) mutual-friction coefficient, `ρn`,`ρs` the
 densities and `ρt` the total density (defaults to `ρn+ρs`). The friction is an
 internal force: the **total momentum** `ρn u_n + ρs u_s` is conserved.
+
+Only the linear mutual friction above is implemented: the nonlinear Iksada
+friction and the transverse Anisov–Peiris–Pitaevskii term of the full HVBK
+model are not.
 """
 mutable struct HVBKParameters <: AbstractParameters
     "normal-fluid kinematic viscosity ν_n."

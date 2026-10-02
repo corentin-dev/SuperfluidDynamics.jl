@@ -23,8 +23,32 @@ This package is authored by Corentin Lothodé, and largely inspired by GPS, a Fo
 
 ## Get package
 
+Add the package from the repository (HTTPS works without an SSH key):
+
 ```
-git clone git@plmlab.math.cnrs.fr:lothode/SuperfluidDynamics.jl.git
+julia> ]add https://plmlab.math.cnrs.fr/lothode/SuperfluidDynamics.jl
+```
+
+Once the registration pull request is merged in the General registry, the
+short form will work:
+
+```
+julia> ]add SuperfluidDynamics
+```
+
+To work on the sources, clone the repository:
+
+```
+git clone https://plmlab.math.cnrs.fr/lothode/SuperfluidDynamics.jl.git
+```
+
+The documentation examples restart some runs from checkpoints stored with
+[git-LFS](https://git-lfs.com) (`docs/save/*.h5`). Without `git lfs install`
+before cloning, those files come as ~131-byte pointer stubs and the affected
+examples fail to run:
+
+```
+git lfs install && git lfs pull
 ```
 
 Start Julia :

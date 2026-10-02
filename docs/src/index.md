@@ -21,7 +21,14 @@ This package is authored by Corentin Lothodé, and is largely inspired by
 
 ## Installation
 
-The package is not in the Julia registry. Add it from the repository:
+Once registered in the General registry:
+
+```
+pkg> add SuperfluidDynamics
+```
+
+Until then (and to work on the sources), add it from the repository — HTTPS
+works without an SSH key:
 
 ```
 pkg> add https://plmlab.math.cnrs.fr/lothode/SuperfluidDynamics.jl
@@ -30,7 +37,7 @@ pkg> add https://plmlab.math.cnrs.fr/lothode/SuperfluidDynamics.jl
 or clone it and work from a local project:
 
 ```bash
-git clone git@plmlab.math.cnrs.fr:lothode/SuperfluidDynamics.jl.git
+git clone https://plmlab.math.cnrs.fr/lothode/SuperfluidDynamics.jl.git
 cd SuperfluidDynamics.jl
 julia --project=.
 ```

@@ -1,0 +1,34 @@
+# Citation metadata for SuperfluidDynamics.jl
+# https://citation-file-format.github.io/
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "SuperfluidDynamics.jl: a Julia package for simulating superfluids"
+abstract: >-
+  Julia package for simulating superfluids: Gross-Pitaevskii (imaginary and
+  real time), Bogoliubov-de Gennes excitations, incompressible Navier-Stokes,
+  the coupled Gross-Pitaevskii / Navier-Stokes two-fluid model and the linear
+  Hall-Vinen-Bekarevich-Khalatnikov model. Spectral and finite-difference
+  derivatives, CPU and GPU, distributed-memory parallelism through
+  PencilArrays.
+authors:
+  - family-names: "Lothodé"
+    given-names: "Corentin"
+    email: "corentin.lothode@univ-rouen.fr"
+    affiliation: "LMRS, CNRS - Université Rouen"
+repository-code: "https://plmlab.math.cnrs.fr/lothode/SuperfluidDynamics.jl"
+repository-artifact: "https://plmlab.math.cnrs.fr/lothode/SuperfluidDynamics.jl/-/releases"
+keywords:
+  - julia
+  - superfluidity
+  - bose-einstein-condensate
+  - gross-pitaevskii
+  - bogoliubov-de-gennes
+  - navier-stokes
+  - hvbk
+  - quantum-turbulence
+  - spectral-method
+  - mpi
+  - gpu
+license: MIT
+version: 2.0.0
+date-released: 2026-10-01

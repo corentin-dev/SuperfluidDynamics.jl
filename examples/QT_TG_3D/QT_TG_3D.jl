@@ -136,7 +136,7 @@ param_insta = GrossPitaevskiiParameters(; coeffΔ=param.coeffΔ,
                                         pot=PotentialZero(field_insta))
 
 # We instantiate a `NumModelSplit2` which corresponds to
-# a second order Strangle scheme.
+# a second order Strang scheme.
 
 Δt_insta = Δt
 niter_insta = 1000

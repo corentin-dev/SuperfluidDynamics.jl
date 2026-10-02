@@ -26,9 +26,9 @@ N = 16
 
 probe(label, sendbuf, recvbuf) = try
     if rank == 0
-        MPI.Send(sendbuf, comm, 1, 0)
+        MPI.Send(sendbuf, 1, 0, comm)
     else
-        MPI.Recv!(recvbuf, comm, 0, 1)
+        MPI.Recv!(recvbuf, 0, 1, comm)
     end
     MPI.Barrier(comm)
     println("rank $rank $label: OK")

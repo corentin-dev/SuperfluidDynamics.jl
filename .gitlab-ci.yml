@@ -80,6 +80,8 @@ test:
     - julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
     - julia --project=. test/runtests.jl
     - julia -e 'using Pkg; Pkg.test()'
+    # Multi-rank diagnostics checks (image runs as root; 2 slots on 1 node).
+    - mpiexec --allow-run-as-root --oversubscribe -n 2 julia --project=. test/mpi_tests.jl
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"

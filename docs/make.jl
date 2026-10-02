@@ -7,7 +7,7 @@ MPI.Init()
 DocMeta.setdocmeta!(SuperfluidDynamics, :DocTestSetup,
                     :(using SuperfluidDynamics;
                       grid = Grid((32, 32), ((-12, 12), (-12, 12)));
-                      field = Field(grid, ComplexField()); 
+                      field = Field(grid, ComplexField());
                       grid3 = Grid((32, 32, 32), ((-12,  12), (-12,  12), (-12,  12)));
                       field3 = Field(grid3, ComplexField());
                      ); recursive=true)
@@ -59,7 +59,7 @@ if run_example
     insert!(pages, 5, "Examples" => examples_md)
 end
 
-makedocs(; authors="Corentin Lothode <corentin.lothode@univ-rouen.fr> and contributors.",
+makedocs(; authors="Corentin Lothode <corentin.lothode@inrae.fr> and contributors.",
          repo="https://plmlab.math.cnrs.fr/lothode/SuperfluidDynamics.jl",
          sitename="SuperfluidDynamics.jl",
          # `prettyurls=false`: page `foo.html` (not `foo/index.html`) so the

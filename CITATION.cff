@@ -13,8 +13,8 @@ abstract: >-
 authors:
   - family-names: "Lothodé"
     given-names: "Corentin"
-    email: "corentin.lothode@univ-rouen.fr"
-    affiliation: "LMRS, CNRS - Université Rouen"
+    email: "corentin.lothode@inrae.fr"
+    affiliation: "IRHS, INRAE"
 repository-code: "https://plmlab.math.cnrs.fr/lothode/SuperfluidDynamics.jl"
 repository-artifact: "https://plmlab.math.cnrs.fr/lothode/SuperfluidDynamics.jl/-/releases"
 keywords:

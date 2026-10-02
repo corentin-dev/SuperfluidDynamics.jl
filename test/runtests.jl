@@ -592,7 +592,9 @@ end
                                          pot=PotentialQuadratic(field, γx=1.0, γy=1.0))
         n = model(field, param, Δt, niter, 10 * niter)
         e0 = SuperfluidDynamics.energy(n)[4]
-        SuperfluidDynamics.solve!(n; plot=false)
+        for _ in 1:niter
+            SuperfluidDynamics.timeStep!(n)
+        end
         EΩ, EΔ, Eβ, e1 = SuperfluidDynamics.energy(n)
         mass = sum(abs2.(field.ϕ)) * grid.Δx * grid.Δy
         μtf = sqrt(β / π)

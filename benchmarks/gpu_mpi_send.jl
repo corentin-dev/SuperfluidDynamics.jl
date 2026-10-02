@@ -1,8 +1,11 @@
-# Decisive test for the GPU+MPI fault: does MPI_Send/MPI_Recv accept device
-# pointers (CUDA-aware MPI)? The pencil transposes inside Plan/FFT exchange
-# PencilArrays between ranks; if those buffers live on the GPU and the MPI
-# build is not CUDA-aware, the send dereferences a device pointer as host and
-# faults — which is exactly where the staged probe (gpu_mpi_stages.jl) dies.
+# Decisive test for the GPU+MPI fault: does MPI accept device pointers
+# (CUDA-aware MPI)? The pencil transposes inside Plan/FFT exchange PencilArrays
+# between ranks; if those buffers live on the GPU and the MPI build is not
+# CUDA-aware, the exchange faults — exactly where the staged probe dies.
+#
+# Structured so a failure on one rank cannot hang the other: the buffer
+# construction (where MPI.jl rejects unsupported array types) is tested and
+# synchronised BEFORE any blocking point-to-point call.
 #
 #   mpiexec -n 2 julia --project=. -t1 -O3 benchmarks/gpu_mpi_send.jl
 
@@ -12,7 +15,14 @@ MPI.Init()
 comm = MPI.COMM_WORLD
 rank = MPI.Comm_rank(comm)
 nranks = MPI.Comm_size(comm)
-nranks == 2 || (println("2 ranks required"); MPI.Finalize(); return)
+
+report(msg) = (println("rank $rank/$nranks $msg"); flush(stdout))
+
+if nranks != 2
+    rank == 0 && report("2 ranks required")
+    MPI.Finalize()
+    return
+end
 
 HAVE_GPU = try
     using CUDA
@@ -21,33 +31,56 @@ catch
     false
 end
 
-using SuperfluidDynamics   # for the PencilArray layout
-N = 16
-
-probe(label, sendbuf, recvbuf) = try
-    if rank == 0
-        MPI.Send(sendbuf, 1, 0, comm)
-    else
-        MPI.Recv!(recvbuf, 0, 0, comm)   # tag must match the Send (tag 0)
-    end
-    MPI.Barrier(comm)
-    println("rank $rank $label: OK")
+# 1. Buffer construction — where MPI.jl rejects unsupported array types.
+host_ok = try
+    MPI.Buffer(fill(1.0, 64))
+    true
 catch e
-    MPI.Barrier(comm)
-    println("rank $rank $label: ECHEC ", typeof(e))
+    report("buffer-host: ECHEC $(typeof(e))")
+    false
 end
-flush(stdout)
+MPI.Barrier(comm)
 
-# host control
-h = fill(Float64(rank + 1), 64)
-hr = fill(0.0, 64)
-probe("send-host", h, hr)
+dev_ok = false
+if HAVE_GPU
+    dev_ok = try
+        MPI.Buffer(CUDA.CuArray(fill(1.0, 64)))
+        true
+    catch e
+        report("buffer-device: ECHEC $(typeof(e)): " *
+               first(split(sprint(showerror, e), "\n"))[1:min(end, 120)])
+        false
+    end
+end
+MPI.Barrier(comm)
+
+# 2. Only exchange if BOTH ranks could build the buffers, so no rank waits on a
+# peer that dropped out.
+ok = MPI.Allreduce([host_ok ? 1 : 0], &, comm)[1] == 1
+if ok
+    if rank == 0
+        MPI.Send(fill(Float64(rank + 1), 64), 1, 0, comm)
+    else
+        MPI.Recv!(zeros(64), 0, 0, comm)
+    end
+    report("send-host: OK")
+end
+MPI.Barrier(comm)
 
 if HAVE_GPU
-    g = CUDA.CuArray(fill(Float64(rank + 1), 64))
-    gr = CUDA.CuArray(zeros(Float64, 64))
-    CUDA.synchronize()
-    MPI.Barrier(comm)
-    probe("send-device", g, gr)
+    okdev = MPI.Allreduce([dev_ok ? 1 : 0], &, comm)[1] == 1
+    if okdev
+        if rank == 0
+            MPI.Send(CUDA.CuArray(fill(Float64(rank + 1), 64)), 1, 0, comm)
+        else
+            MPI.Recv!(CUDA.CuArray(zeros(64)), 0, 0, comm)
+            CUDA.synchronize()
+        end
+        report("send-device: OK")
+    else
+        report("send-device: NON TESTABLE (buffer refusé)")
+    end
 end
+MPI.Barrier(comm)
+report("fin")
 MPI.Finalize()

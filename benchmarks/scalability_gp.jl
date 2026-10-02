@@ -47,7 +47,7 @@ dt_max = MPI.Allreduce(dt, max, comm)
 
 if rank == 0
     pts = N^3
-    @printf("gp: nranks=%d  N=%d  steps=%d  s/step=%.5f  Mpts/s=%.2f\n",
+    @printf("nranks=%d  bench=gp  N=%d  steps=%d  s/step=%.5f  Mpts/s=%.2f\n",
             nranks, N, NSTEPS, dt_max, pts / 1e6 / dt_max)
 end
 MPI.Finalize()

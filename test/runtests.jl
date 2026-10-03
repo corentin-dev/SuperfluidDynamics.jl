@@ -1455,3 +1455,87 @@ end
         @info "No CUDA device: skipping GPU time-step tests"
     end
 end
+
+# ==========================================================================
+# Dealiasing bound: global, rank-independent (regression test for the fix)
+# ==========================================================================
+# The bound must come from the plan's global wavenumber vectors. On a single
+# rank the local grid IS the global one, so ξmax_global must equal the value
+# computed from the full spectral grid — this pins the definition; the
+# rank-count behaviour itself is measured by benchmarks/scalability_rankinv.jl.
+@testset "ξmax_global is the (4/9)-rule bound of the FULL grid" begin
+    for dims in ((48, 48), (48, 48, 48))
+        g = Grid(dims, ntuple(_ -> (-2π, 2π), length(dims)))
+        f = Field(g, ComplexField(); ndims=(length(dims) == 3 ? 3 : 1))
+        p = SuperfluidDynamics.Plan(f)
+        ξmax = SuperfluidDynamics.ξmax_global(p)
+        # analytic: (4/9)·min_d (π/Δx_d)²  (fftfreq max = Nyquist)
+        expected = (4 / 9) * minimum((π / g.Δ[d])^2 for d in 1:length(dims))
+        @test ξmax ≈ expected rtol = 1e-12
+        # the plan vectors are the global ones: same answer from the field grid
+        gx = SuperfluidDynamics.spectral_grid(p)
+        sq = x -> x^2
+        ξs = length(dims) == 3 ? (gx.x, gx.y, gx.z) : (gx.x, gx.y)
+        @test ξmax ≈ (4 / 9) * minimum(maximum(sq, ξ) for ξ in ξs) rtol = 1e-12
+    end
+end
+
+# ==========================================================================
+# NSGP and explicit-RK GP time steps on GPU (single process)
+# ==========================================================================
+# NSGP was the last model with a device-incompatible step (the dealiasing
+# bound reduced over the lazy grid wrapper). Same CPU/GPU comparison pattern.
+@testset "NSGP and GP-RK time steps on GPU arrays match CPU" begin
+    have_gpu = try
+        using CUDA
+        CUDA.ndevices() > 0
+    catch
+        false
+    end
+    if have_gpu
+        using CUDA
+        CUDA.device!(0)
+        rel(a, b) = sqrt(sum(abs2, collect(parent(a)) .- parent(b))) /
+                    max(sqrt(sum(abs2, parent(b))), 1e-30)
+
+        for dims in ((32, 32), (16, 16, 16))
+            nd = length(dims)
+            bounds = ntuple(_ -> (-8.0, 8.0), nd)
+            res = map((Array, CuArray)) do A
+                g = Grid(dims, bounds; array_type=A)
+                fgp = Field(g, ComplexField(); ndims=nd)
+                fns = Field(g, ComplexField(); ndims=nd)
+                @. fgp.ϕ = tanh(sqrt(fgp.x^2 + fgp.y^2)) * exp(im * atan(fgp.y, fgp.x))
+                p = NSGPParameters(; α=-0.02, ν=0.01, β=1.0, ρn=0.5, ρs=0.5,
+                                   Btab=0.4, Bptab=0.1, ξ=1.0, ε2=0.05,
+                                   one_way=true)
+                m = NumModelNSGP(fgp, fns, p, 0.002, 1, 1; stepper="RK2Imp")
+                for _ in 1:3
+                    SuperfluidDynamics.timeStep!(m)
+                end
+                fgp
+            end
+            CUDA.synchronize()
+            @test rel(res[2].ϕ, res[1].ϕ) < 1e-10   # NSGP steps on GPU = CPU
+        end
+
+        # explicit-RK GP (dealiases the solution every step — same fixed site)
+        res = map((Array, CuArray)) do A
+            g = Grid((32, 32), ((-2π, 2π), (-2π, 2π)); array_type=A)
+            f = Field(g, ComplexField())
+            @. f.ϕ = exp(-0.5 * (f.x^2 + f.y^2)) * (1 + 0.2 * sin(2f.x) * sin(3f.y))
+            normalize!(f)
+            p = GrossPitaevskiiParameters(; coeffΔ=-0.5, β=1.0,
+                                          pot=PotentialZero(f))
+            m = NumModelGPRK(f, p, 0.01, 1, 1)
+            for _ in 1:5
+                SuperfluidDynamics.timeStep!(m)
+            end
+            f
+        end
+        CUDA.synchronize()
+        @test rel(res[2].ϕ, res[1].ϕ) < 1e-10
+    else
+        @info "No CUDA device: skipping NSGP/GP-RK GPU tests"
+    end
+end

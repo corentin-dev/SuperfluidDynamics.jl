@@ -36,7 +36,10 @@ rank = MPI.Comm_rank(comm)
 nranks = MPI.Comm_size(comm)
 
 grid = Grid((N, N, N), ((-2π, 2π), (-2π, 2π), (-2π, 2π)))
-field = Field(grid, ComplexField(); ndims=3)
+# NS evolves a 3-component velocity (ndims=3); GP evolves the scalar order
+# parameter (the default, ndims=1 — PotentialZero and the GP models are typed
+# on the scalar field).
+field = Field(grid, ComplexField(); ndims=(MODEL == "ns" ? 3 : 1))
 
 rng = MersenneTwister(12345)
 # Bands sitting between the strictest rank-local cutoff and the global one.
@@ -48,16 +51,24 @@ rng = MersenneTwister(12345)
 # the spectral support, not the polarisation.)
 fracs = [(0.16, 0.16, 0.08), (0.25, 0.08, 0.04), (0.04, 0.25, 0.08),
          (0.08, 0.04, 0.25), (0.20, 0.20, 0.08), (0.30, 0.12, 0.06)]
-fill!(parent(field.ux), 0.0); fill!(parent(field.uy), 0.0); fill!(parent(field.uz), 0.0)
-fill!(parent(field.ϕ), 0.0)
+# Field allocates undef data: zero the evolving arrays before accumulating.
+if MODEL == "ns"
+    fill!(parent(field.ux), 0.0); fill!(parent(field.uy), 0.0); fill!(parent(field.uz), 0.0)
+else
+    fill!(parent(field.ϕ), 0.0)
+end
+# identical seeded values for both models; the velocity field just has u-parts
 for (f1, f2, f3) in fracs
     k1, k2, k3 = max(1, round(Int, f1 * N)), max(1, round(Int, f2 * N)), max(1, round(Int, f3 * N))
     ph = 0.4 + 0.3 * rand(rng)
-    @. field.ux += sin($k1 * field.x + $k2 * field.y + $k3 * field.z) * $ph
-    @. field.uy += cos($(k1 + 1) * field.x + $k2 * field.y + $k3 * field.z) * (1 - $ph)
-    @. field.uz += sin($k2 * field.x + $k3 * field.y + $(k1 ÷ 2 + 1) * field.z) * $ph
-    # the GP observable evolves ϕ, not u: seed the same bands there
-    @. field.ϕ += exp(im * ($k1 * field.x + $k2 * field.y + $k3 * field.z)) * $ph
+    if MODEL == "ns"
+        @. field.ux += sin($k1 * field.x + $k2 * field.y + $k3 * field.z) * $ph
+        @. field.uy += cos($(k1 + 1) * field.x + $k2 * field.y + $k3 * field.z) * (1 - $ph)
+        @. field.uz += sin($k2 * field.x + $k3 * field.y + $(k1 ÷ 2 + 1) * field.z) * $ph
+    else
+        # the GP observable evolves ϕ, not u: seed the same bands there
+        @. field.ϕ += exp(im * ($k1 * field.x + $k2 * field.y + $k3 * field.z)) * $ph
+    end
 end
 if MODEL == "gp"
     field.ϕ ./= sqrt(sum(abs2.(field.ϕ)) * prod(grid.Δ))
@@ -66,9 +77,13 @@ end
 model = if MODEL == "ns"
     NumModelRK4Imp(field, NavierStokesParameters(; ν=0.0), 0.01, 1, 1)
 elseif MODEL == "gp"
-    param = GrossPitaevskiiParameters(; coeffΔ=-0.075, β=27.0,
+    # NumModelGPRK is a damped (gradient-flow) solver that dealiases the
+    # solution after every step — the GP site of the rank-local bound. Keep
+    # the damping gentle (small β, small dt) so the observable stays O(1)
+    # over the few steps of the probe.
+    param = GrossPitaevskiiParameters(; coeffΔ=-0.5, β=1.0,
                                       pot=PotentialZero(field))
-    NumModelGPRK(field, param, 0.002, 1, 1)   # explicit RK4: dealiases each step
+    NumModelGPRK(field, param, 1e-4, 1, 1)
 else
     error("RANKINV_MODEL must be ns or gp")
 end
@@ -90,7 +105,11 @@ function observable(m)
         end
         return 0.5 * e * prod(m.f.g.Δ)
     else
-        return energy(m)[4]
+        # NumModelGPRK is a damped (imaginary-time-like) solver: its energy
+        # collapses toward the ground state, a poor drift observable. The norm
+        # sum(|ϕ|²) is a global reduction of the state and reacts to any
+        # spectral truncation difference — use it for GP.
+        return real(sum(abs2.(m.f.ϕ)))
     end
 end
 

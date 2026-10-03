@@ -52,6 +52,43 @@ rank, nrank = MPI.Comm_rank(comm), MPI.Comm_size(comm)
     @test abs(nrm - 1.0) < 1e-12
 end
 
+
+# --- Navier-Stokes time stepping vs the exact Taylor-Green decay ----------
+# On a 2π-periodic box with k = (1, 1) the Taylor-Green vortex is a steady Euler
+# solution, so the viscous decay is exactly E(t)/E(0) = exp(-4 ν t) whatever the
+# number of ranks. This checks the transposes + FFTs + projection end to end.
+@testset "MPI NS Taylor-Green decay ($nrank ranks)" begin
+    grid = Grid((32, 32), ((-π, π), (-π, π)))
+    field = Field(grid, ComplexField(); ndims=2)
+    ν, Δt, nsteps = 0.01, 0.01, 40
+    n = NumModelRK4Imp(field, NavierStokesParameters(; ν=ν), Δt, nsteps, 1)
+    taylor_green!(field)
+    E0 = energy(n)[2]
+    for _ in 1:nsteps
+        SuperfluidDynamics.timeStep!(n)
+    end
+    @test energy(n)[2] / E0 ≈ exp(-4 * ν * nsteps * Δt) rtol = 1e-6
+end
+
+# --- BdG: distributed eigensolve vs analytic spectrum ----------------------
+# Same non-interacting anisotropic oscillator as in runtests.jl: ω = {ωx, ωy, 2ωx}.
+@testset "MPI BdG analytic spectrum ($nrank ranks)" begin
+    grid = Grid((20, 20), ((-6.0, 6.0), (-6.0, 6.0)))
+    field = Field(grid, ComplexField())
+    ωx, ωy = 1.0, sqrt(2.0)
+    @. field.ϕ = exp(-ωx * field.x^2 / 2 - ωy * field.y^2 / 2)
+    field.ϕ ./= sqrt(sum(abs2, field.ϕ) * grid.Δx * grid.Δy)
+    pot = PotentialQuadratic(field; γx=ωx, γy=ωy^2)
+    param = BdGParameters(coeffΔ=-0.5, β=0.0, pot=pot, Ω=0.0)
+    n = NumModelBdG(field, param, 1, 1; nev=3)
+    SuperfluidDynamics.timeStep!(n)       # must neither hang nor error
+    @test n.mu ≈ (ωx + ωy) / 2 atol = 1e-3
+    @test length(n.ωs) == 3
+    @test all(abs.(n.ωs .- [ωx, ωy, 2ωx]) .< 1e-3)
+    # every rank holds the same eigenvalues
+    @test MPI.Allreduce(n.ωs, +, comm) ./ nrank ≈ n.ωs
+end
+
 if rank == 0
     println("MPI tests done on $nrank ranks")
 end

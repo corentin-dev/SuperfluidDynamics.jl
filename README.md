@@ -16,7 +16,7 @@ This package is authored by Corentin Lothodé, and largely inspired by GPS, a Fo
 ## Models
 
 - **Gross-Pitaevskii**: imaginary time (backward Euler, Crank-Nicolson) and real time (time-dependent Crank-Nicolson, first and second order operator splitting), plus an external-velocity solver. See `NumModelBackwardEuler`, `NumModelCrankNicolson`, `NumModelCrankNicolsonT`, `NumModelSplit1`, `NumModelSplit2`, `NumModelExternalVelocity`.
-- **Bogoliubov-de Gennes** (`NumModelBdG`): matrix-free eigensolver for the linearized excitations about a stationary GP state. The `2N x 2N` operator is applied through the derivative machinery (no dense matrix); the zero mode is rejected by overlap with `(ψ₀, ψ₀*)` and the modes are returned symplectically normalized.
+- **Bogoliubov-de Gennes** (`NumModelBdG`): matrix-free eigensolver for the linearized excitations about a stationary GP state. The `2N x 2N` operator is applied through the derivative machinery (no dense matrix); the zero mode is rejected by overlap with `(ψ₀, ψ₀*)` and the modes are returned symplectically normalized. Under MPI the eigensolve is driven from rank 0 on the gathered global vector (the other ranks serve the operator), so it is correct on any number of ranks but not memory-scalable; the modes are then returned as global arrays on every rank.
 - **Navier-Stokes** (incompressible, 2D and 3D): semi-implicit RK4 solver `NumModelRK4Imp` (vorticity-advection form, exact implicit viscous multiplier, spectral Helmholtz projection).
 - **NSGP** (coupled GP/Navier-Stokes two-fluid model of Brachet et al., `NumModelNSGP`): a non-stationary Gross-Pitaevskii equation for the superfluid wavefunction coupled, through the Coste coupling, to a forced Navier-Stokes equation for the normal fluid (one-way or two-way).
 - **HVBK** (linear two-fluid model, `NumModelHVBK`): two incompressible velocity fields coupled by the linear mutual friction `F = -1/2 rb |∇×u_s| (u_n - u_s)`, total momentum conserved.
@@ -62,6 +62,17 @@ using SuperfluidDynamics
 ```
 
 ## `MPI` and `HDF5`
+
+### GPU and MPI
+
+A `Field` on `CuArray` grids can be distributed over several MPI ranks only if the MPI library is **CUDA-aware**, because the pencil transposes pass device buffers directly to MPI. The default `MPICH_jll` is not: `Field` then throws an explanatory error (`MPI.has_cuda() == false`) instead of crashing. To use several GPUs, point `MPI.jl` to a CUDA-aware system MPI (e.g. OpenMPI with UCX/CUDA support) and check `MPI.has_cuda()`:
+
+```julia
+using MPIPreferences
+MPIPreferences.use_system_binary()   # then restart Julia
+using MPI; MPI.has_cuda()            # must be true
+```
+
 
 This project uses  `MPIPreferences.jl` to setup `MPI.jl`. In order to use it, you can create a file named `LocalPreferences.toml` containing:
 

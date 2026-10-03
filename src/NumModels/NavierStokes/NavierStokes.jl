@@ -1,5 +1,20 @@
 export taylor_green!
 
+# Coordinate vectors shaped for broadcasting along dimension `d` of an
+# `N`-dimensional field.
+#
+# `f.x`, `f.y`, `f.z` are lazy `PencilArrays` grid components. They already
+# broadcast correctly (`Broadcast.broadcastable` reshapes the underlying local
+# coordinates), but wrapping them in `reshape(...)` hides them inside a
+# `Base.ReshapedArray` that Adapt cannot unwrap, so a fused CUDA broadcast fails
+# with "passing non-bitstype argument". Hence: use `broadcastable` for lazy
+# components, and a plain `reshape` for ordinary vectors (CPU or device).
+@inline _bcoord(v, ::Val{d}, ::Val{N}) where {d,N} =
+    reshape(v, ntuple(j -> j == d ? length(v) : 1, Val(N)))
+@inline _bcoord(v::PencilArrays.LocalGrids.RectilinearGridComponent, ::Val{d},
+                ::Val{N}) where {d,N} = Broadcast.broadcastable(v)
+
+
 """
     taylor_green!(f, x, y)
 
@@ -16,12 +31,20 @@ boxes too.
 function taylor_green!(f, x, y)
     Lx, Ly = f.g.Lx, f.g.Ly
     kx, ky = 2π / Lx, 2π / Ly
-    X = reshape(x, :, 1)
-    Y = reshape(y, 1, :)
+    X = _bcoord(x, Val(1), Val(2))
+    Y = _bcoord(y, Val(2), Val(2))
     @. f.ux = sin(kx * X) * cos(ky * Y)
     @. f.uy = -(kx / ky) * cos(kx * X) * sin(ky * Y)
     return nothing
 end
+
+"""
+    taylor_green!(f)
+
+Same as `taylor_green!(f, f.x, f.y)` (resp. `f.z`): uses the *local* coordinates of
+`f`, which is the right choice under MPI and on GPU.
+"""
+taylor_green!(f::AbstractField2D) = taylor_green!(f, f.x, f.y)
 
 """
     taylor_green!(f, x, y, z)
@@ -41,14 +64,16 @@ boxes too (the plain GPS field is only divergence-free when kx = ky).
 function taylor_green!(f, x, y, z)
     Lx, Ly, Lz = f.g.Lx, f.g.Ly, f.g.Lz
     kx, ky, kz = 2π / Lx, 2π / Ly, 2π / Lz
-    X = reshape(x, :, 1, 1)
-    Y = reshape(y, 1, :, 1)
-    Z = reshape(z, 1, 1, :)
+    X = _bcoord(x, Val(1), Val(3))
+    Y = _bcoord(y, Val(2), Val(3))
+    Z = _bcoord(z, Val(3), Val(3))
     @. f.ux = sin(kx * X) * cos(ky * Y) * cos(kz * Z)
     @. f.uy = -(kx / ky) * cos(kx * X) * sin(ky * Y) * cos(kz * Z)
     @. f.uz = 0
     return nothing
 end
+
+taylor_green!(f::AbstractField3D) = taylor_green!(f, f.x, f.y, f.z)
 
 """
     energy(n, showEnergy=false)

@@ -57,6 +57,22 @@ const Field2D{ND,FT,FFT,A,PA,G,P} = Field{2,ND,FT,FFT,A,PA,G,P}
 "Alias for 3D field."
 const Field3D{ND,FT,FFT,A,PA,G,P} = Field{3,ND,FT,FFT,A,PA,G,P}
 
+# Device arrays (CuArray, ...) on several MPI ranks require a GPU-aware MPI
+# implementation: the pencil transposes hand device buffers straight to MPI. With
+# a non-GPU-aware build (e.g. the default MPICH_jll) the first transpose
+# segfaults, so fail early with an actionable message instead.
+function _check_device_mpi(::Type{A}, mpi_topo) where {A}
+    A <: Array && return nothing
+    MPI.Comm_size(PencilArrays.get_comm(mpi_topo.topo)) > 1 || return nothing
+    (MPI.has_cuda() || MPI.has_rocm()) && return nothing
+    throw(ArgumentError("a Field on $A arrays is distributed over several MPI " *
+                        "ranks, but the loaded MPI library is not GPU-aware " *
+                        "(MPI.has_cuda() == false); the pencil transposes would " *
+                        "crash. Use a CUDA-aware MPI (MPIPreferences.use_system_binary()" *
+                        " with e.g. OpenMPI+UCX built with CUDA), or run on a single " *
+                        "rank. See the README, section `MPI` and `HDF5`."))
+end
+
 """
 $(TYPEDSIGNATURES)
 
@@ -87,6 +103,7 @@ function Field(g::AbstractGrid2D{FT,A}, t::FieldType;
         FFT = Complex{FT}
     end
 
+    _check_device_mpi(A, mpi_topo)
     pen_x = Pencil(A, mpi_topo.topo, g.n, (2,))
     local_dims = size_local(pen_x)
     data = [PencilArray(pen_x, A{FFT}(undef, local_dims))]
@@ -129,6 +146,7 @@ function Field(g::AbstractGrid3D{FT,A}, t::FieldType;
         FFT = Complex{FT}
     end
 
+    _check_device_mpi(A, mpi_topo)
     pen_x = Pencil(A, mpi_topo.topo, g.n, (2, 3))
     local_dims = size_local(pen_x)
     data = [PencilArray(pen_x, A{FFT}(undef, local_dims))]

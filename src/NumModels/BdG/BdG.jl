@@ -256,6 +256,9 @@ the zero eigenspace is two-dimensional when `β = 0` (spanned by
 """
 function timeStep!(n::NumModelBdG)
     n.mu = bdg_mu(n)
+    if MPI.Comm_size(PencilArrays.get_comm(n.f.ϕ)) > 1
+        return _timeStep_distributed!(n)
+    end
     N = length(parent(n.f.ϕ))
     out = [similar(n.f.ϕ), similar(n.f.ϕ)]
 
@@ -270,6 +273,117 @@ function timeStep!(n::NumModelBdG)
                          maxiter=n.restarts * 1000)
     ord = sortperm(abs.(real(ew)))
     n.ωs, n.us, n.vs = bdg_output(n, real(ew[ord]), ev[:, ord])
+    return 0
+end
+
+
+# ---------------------------------------------------------------------------
+# distributed (MPI) eigensolve
+# ---------------------------------------------------------------------------
+#
+# Arpack is a serial library. Run independently on each rank it would build a
+# different Krylov basis from the rank-local data (local inner products, local
+# convergence tests) while the operator itself is a collective: the ranks drift
+# apart and block in different collectives. Instead, rank 0 alone drives Arpack
+# on the *global* 2N vector, and every other rank serves the mat-vec:
+#
+#     rank 0:  Bcast(command = apply); Bcast(x); scatter x; apply; gather y
+#     others:  loop { Bcast(command); if stop -> break; Bcast(x); scatter; apply; gather }
+#
+# so the control flow is decided in one place by construction (no reliance on
+# bit-identical floating point across ranks). Memory: the global vectors live on
+# rank 0 only. The cost is an O(N_global) gather per mat-vec, which is fine for
+# the few hundred mat-vecs of a BdG solve but makes this path a correctness
+# feature, not a scalable one. A fully distributed Krylov solver would require
+# global inner products (e.g. KrylovKit with PencilArray-aware vectors).
+#
+# The modes `n.us`/`n.vs` are returned as *global* arrays on every rank.
+#
+# Assumes the pencil has no index permutation (always the case for `Field`),
+# i.e. memory order == logical order, and CPU arrays (Arpack is CPU-only).
+
+function _bdg_replicate(x::PencilArray)
+    comm = PencilArrays.get_comm(x)
+    g = PencilArrays.gather(x, 0)
+    G = g === nothing ? Array{eltype(x)}(undef, PencilArrays.size_global(x)) : g
+    MPI.Bcast!(G, 0, comm)
+    return G
+end
+
+# Collective: scatter the global stacked vector `xg` into the local `utmp`/`vtmp`,
+# apply the operator, and gather the result. Returns the stacked global result
+# on rank 0 and `nothing` elsewhere.
+function _bdg_apply_global!(n::NumModelBdG, out, xg::AbstractVector)
+    dims = PencilArrays.size_global(n.f.ϕ)
+    Ng = prod(dims)
+    r = PencilArrays.range_local(n.utmp, PencilArrays.LogicalOrder())
+    parent(n.utmp) .= view(reshape(view(xg, 1:Ng), dims), r...)
+    parent(n.vtmp) .= view(reshape(view(xg, (Ng + 1):(2Ng)), dims), r...)
+    bdg_apply!(n, out, n.utmp, n.vtmp)
+    gu = PencilArrays.gather(out[1], 0)
+    gv = PencilArrays.gather(out[2], 0)
+    return gu === nothing ? nothing : vcat(vec(gu), vec(gv))
+end
+
+function _timeStep_distributed!(n::NumModelBdG)
+    T = Complex{Float64}
+    comm = PencilArrays.get_comm(n.f.ϕ)
+    rank = MPI.Comm_rank(comm)
+    dims = PencilArrays.size_global(n.f.ϕ)
+    Ng = prod(dims)
+    out = [similar(n.f.ϕ), similar(n.f.ϕ)]
+    nev2 = 2 * n.nev + 2
+
+    ew = Vector{T}(undef, 0)
+    ev = Matrix{T}(undef, 2Ng, 0)
+    cmd = Ref(Int32(0))      # 1 = apply the operator, 0 = stop
+    ok = Ref(Int32(1))       # 1 = rank 0 finished without error
+    if rank == 0
+        try
+            lmap = LinearMap{T}(2Ng; issymmetric=false) do x
+                cmd[] = 1
+                MPI.Bcast!(cmd, 0, comm)
+                xb = Vector{T}(x)
+                MPI.Bcast!(xb, 0, comm)
+                return _bdg_apply_global!(n, out, xb)
+            end
+            ew, ev = Arpack.eigs(lmap; nev=nev2, which=n.which,
+                                 tol=Float64(n.tol), ncv=min(max(nev2 + 5, 20), 2Ng - 2),
+                                 maxiter=n.restarts * 1000)
+        catch
+            ok[] = 0
+            rethrow()
+        finally
+            # always release the other ranks, also when Arpack threw
+            cmd[] = 0
+            MPI.Bcast!(cmd, 0, comm)
+            MPI.Bcast!(ok, 0, comm)
+        end
+    else
+        while true
+            MPI.Bcast!(cmd, 0, comm)
+            cmd[] == 0 && break
+            xb = Vector{T}(undef, 2Ng)
+            MPI.Bcast!(xb, 0, comm)
+            _bdg_apply_global!(n, out, xb)
+        end
+        MPI.Bcast!(ok, 0, comm)
+        ok[] == 1 || error("BdG eigensolve failed on rank 0 (see its error)")
+    end
+
+    # share the converged eigenpairs with every rank
+    m = Ref(Int32(length(ew)))
+    MPI.Bcast!(m, 0, comm)
+    if rank != 0
+        ew = Vector{T}(undef, m[])
+        ev = Matrix{T}(undef, 2Ng, m[])
+    end
+    MPI.Bcast!(ew, 0, comm)
+    MPI.Bcast!(ev, 0, comm)
+
+    ψg = _bdg_replicate(n.f.ϕ)
+    ord = sortperm(abs.(real(ew)))
+    n.ωs, n.us, n.vs = bdg_output(n, real(ew[ord]), ev[:, ord]; ψ=ψg)
     return 0
 end
 
@@ -288,8 +402,11 @@ eigenstate of the discrete operator — in that case the zero mode appears as a
 small-residual pair at ω ≈ ±ε and its frequency is not reliably zero. Kept
 modes are renormalized to s = 1 and returned sorted by increasing ω.
 """
-function bdg_output(n::NumModelBdG, ωs, ev; zero_ov=0.15)
-    ψp = parent(n.f.ϕ)
+function bdg_output(n::NumModelBdG, ωs, ev; zero_ov=0.15, ψ=parent(n.f.ϕ))
+    # `ψ` is the stationary state matching the layout of `ev`: the local data on one
+    # rank (default), or the full replicated array when the eigenvectors are global
+    # (distributed solve).
+    ψp = ψ
     N = length(ψp)
     dv = n.f.g.Δx * n.f.g.Δy * (ndims(ψp) == 3 ? n.f.g.Δz : 1.0)
     m = size(ev, 2)

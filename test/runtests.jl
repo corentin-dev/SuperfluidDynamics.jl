@@ -1302,3 +1302,60 @@ end
         @test s ≈ 1.0 atol=1e-10
     end
 end
+
+# ==========================================================================
+# Full time steps on GPU arrays (NS + GP), single process
+# ==========================================================================
+# The solver loops are written with broadcasts and must give the CPU result on a
+# `CuArray` grid. Skipped when no CUDA device is available.
+@testset "NS and GP time steps on GPU arrays match CPU" begin
+    have_gpu = try
+        using CUDA
+        CUDA.ndevices() > 0
+    catch
+        false
+    end
+    if have_gpu
+        using CUDA
+        CUDA.device!(0)
+        rel(a, b) = sqrt(sum(abs2, collect(parent(a)) .- parent(b))) /
+                    sqrt(sum(abs2, parent(b)))
+
+        # --- Navier-Stokes 2D: Taylor-Green initialisation + RK4 steps -----
+        for (dims, bounds, nd) in (((32, 32), ((-π, π), (-π, π)), 2),
+                                   ((16, 16, 16), ((-π, π), (-π, π), (-π, π)), 3))
+            fields = map((Array, CuArray)) do A
+                f = Field(Grid(dims, bounds; array_type=A), ComplexField(); ndims=nd)
+                taylor_green!(f)
+                n = NumModelRK4Imp(f, NavierStokesParameters(; ν=0.01), 0.01, 5, 1)
+                for _ in 1:5
+                    SuperfluidDynamics.timeStep!(n)
+                end
+                f
+            end
+            CUDA.synchronize()
+            for c in 1:nd
+                @test rel(fields[2].u[c], fields[1].u[c]) < 1e-10
+            end
+        end
+
+        # --- Gross-Pitaevskii: second-order splitting, harmonic trap -------
+        res = map((Array, CuArray)) do A
+            g = Grid((32, 32), ((-6, 6), (-6, 6)); array_type=A)
+            f = Field(g, ComplexField())
+            @. f.ϕ = exp(-0.5 * (f.x^2 + f.y^2)) * (1 + 0.1 * f.x)
+            normalize!(f)
+            param = GrossPitaevskiiParameters(coeffΔ=-0.5, β=10.0, Ω=0.0,
+                                              pot=PotentialQuadratic(f, γx=1.0, γy=1.0))
+            n = NumModelSplit2(f, param, 0.01, 20, 20)
+            for _ in 1:20
+                SuperfluidDynamics.timeStep!(n)
+            end
+            f
+        end
+        CUDA.synchronize()
+        @test rel(res[2].ϕ, res[1].ϕ) < 1e-10
+    else
+        @info "No CUDA device: skipping GPU time-step tests"
+    end
+end

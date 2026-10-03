@@ -137,14 +137,14 @@ function _gp_dealias!(n::NumModelGPRK)
     mul_all!(n.shat, n.plan, n.f.ϕ)
     if ndims(gridξ) == 3
         func = x -> x^2
-        ξmax = 4 / 9 * minimum((mapreduce(func, max, gridξ.x),
-                                mapreduce(func, max, gridξ.y),
-                                mapreduce(func, max, gridξ.z)))
+        ξmax = 4 / 9 * minimum((maximum(func, gridξ.x.data),
+                                maximum(func, gridξ.y.data),
+                                maximum(func, gridξ.z.data)))
         @. n.shat *= (gridξ.x^2 + gridξ.y^2 + gridξ.z^2) < ξmax
     else
         func = x -> x^2
-        ξmax = 4 / 9 * minimum((mapreduce(func, max, gridξ.x),
-                                mapreduce(func, max, gridξ.y)))
+        ξmax = 4 / 9 * minimum((maximum(func, gridξ.x.data),
+                                maximum(func, gridξ.y.data)))
         @. n.shat *= (gridξ.x^2 + gridξ.y^2) < ξmax
     end
     ldiv_all!(n.f.ϕ, n.plan, n.shat)

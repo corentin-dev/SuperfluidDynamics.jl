@@ -29,8 +29,8 @@ whose |k|² exceeds (4/9)·min(|k|max)² of each direction.
 """
 function dealias!(u_hat, ξx, ξy, ξz)
     func = x -> x^2
-    ξmax = 4 / 9 * minimum((mapreduce(func, max, ξx), mapreduce(func, max, ξy),
-                            mapreduce(func, max, ξz)))
+    ξmax = 4 / 9 * minimum((maximum(func, ξx.data), maximum(func, ξy.data),
+                            maximum(func, ξz.data)))
     @. u_hat[1] *= (ξx^2 + ξy^2 + ξz^2) < ξmax
     @. u_hat[2] *= (ξx^2 + ξy^2 + ξz^2) < ξmax
     @. u_hat[3] *= (ξx^2 + ξy^2 + ξz^2) < ξmax
@@ -44,7 +44,7 @@ end
 """
 function dealias2!(u_hat, ξx, ξy)
     func = x -> x^2
-    ξmax = 4 / 9 * minimum((mapreduce(func, max, ξx), mapreduce(func, max, ξy)))
+    ξmax = 4 / 9 * minimum((maximum(func, ξx.data), maximum(func, ξy.data)))
     @. u_hat[1] *= (ξx^2 + ξy^2) < ξmax
     @. u_hat[2] *= (ξx^2 + ξy^2) < ξmax
     return nothing

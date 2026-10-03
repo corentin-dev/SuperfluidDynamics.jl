@@ -348,23 +348,16 @@ function _kxsq(gridξ)
 end
 
 """
-    _dealias_scalar!(s_hat, gridξ)
+    _dealias_scalar!(s_hat, gridξ, ξmax)
 
 2/3-rule dealiasing of a scalar spectral field `s_hat` (last-pencil layout),
 with the same threshold as `dealias!`/`dealias2!` (GPS `filter_dealiasing`).
 In-place.
 """
-function _dealias_scalar!(s_hat, gridξ)
+function _dealias_scalar!(s_hat, gridξ, ξmax)
     if ndims(gridξ) == 3
-        func = x -> x^2
-        ξmax = 4 / 9 * minimum((mapreduce(func, max, gridξ.x),
-                                mapreduce(func, max, gridξ.y),
-                                mapreduce(func, max, gridξ.z)))
         @. s_hat *= (gridξ.x^2 + gridξ.y^2 + gridξ.z^2) < ξmax
     else
-        func = x -> x^2
-        ξmax = 4 / 9 * minimum((mapreduce(func, max, gridξ.x),
-                                mapreduce(func, max, gridξ.y)))
         @. s_hat *= (gridξ.x^2 + gridξ.y^2) < ξmax
     end
     return nothing
@@ -408,17 +401,12 @@ function _gauss_smooth!(n::NumModelNSGP, uhat)
     gridξ = spectral_grid(n.plan)
     kreg2 = n.param.kreg^2
     ksq = _kxsq(gridξ)
-    func = x -> x^2
+    ξmax = ξmax_global(n.plan)
     if ndims(gridξ) == 3
         wvn = @. ksq(gridξ.x, gridξ.y, gridξ.z)
-        ξmax = 4 / 9 * minimum((mapreduce(func, max, gridξ.x),
-                                mapreduce(func, max, gridξ.y),
-                                mapreduce(func, max, gridξ.z)))
         filt = @. ifelse(wvn < ξmax, exp(-wvn / kreg2), 0.0)
     else
         wvn = @. ksq(gridξ.x, gridξ.y)
-        ξmax = 4 / 9 * minimum((mapreduce(func, max, gridξ.x),
-                                mapreduce(func, max, gridξ.y)))
         filt = @. ifelse(wvn < ξmax, exp(-wvn / kreg2), 0.0)
     end
     for i in 1:length(uhat)
@@ -509,6 +497,7 @@ function compute_u_adv_Fns!(n::NumModelNSGP, phihat, uhat)
     mul_all!(n.us_hat, plan, n.us_phys)
     _gauss_smooth!(n, n.us_hat)
     gridξ = spectral_grid(plan)
+    ξmax = ξmax_global(plan)
     if is3
         # Ω = ∇×u_s^reg (spectral); same operator as the NS vorticity
         @. n.omega_hat[1] = 1im * (gridξ.y * n.us_hat[3] - gridξ.z * n.us_hat[2])
@@ -597,11 +586,11 @@ function compute_u_adv_Fns!(n::NumModelNSGP, phihat, uhat)
     mul_all!(n.uadv_hat, plan, n.uadv_phys)
     mul_all!(n.fns_hat, plan, n.fns_phys)
     if is3
-        dealias!(n.uadv_hat, gridξ.x, gridξ.y, gridξ.z)
-        dealias!(n.fns_hat, gridξ.x, gridξ.y, gridξ.z)
+        dealias!(n.uadv_hat, gridξ.x, gridξ.y, gridξ.z, ξmax)
+        dealias!(n.fns_hat, gridξ.x, gridξ.y, gridξ.z, ξmax)
     else
-        dealias2!(n.uadv_hat, gridξ.x, gridξ.y)
-        dealias2!(n.fns_hat, gridξ.x, gridξ.y)
+        dealias2!(n.uadv_hat, gridξ.x, gridξ.y, ξmax)
+        dealias2!(n.fns_hat, gridξ.x, gridξ.y, ξmax)
     end
     _project_spectral!(n, n.fns_hat)
     ldiv_all!(n.uadv_phys, plan, n.uadv_hat)
@@ -615,7 +604,7 @@ function compute_u_adv_Fns!(n::NumModelNSGP, phihat, uhat)
     end
     @. n.gp_phys_a = real(n.gp_phys_a)
     mul_all!(n.vxm_hat, plan, n.gp_phys_a)
-    _dealias_scalar!(n.vxm_hat, gridξ)
+    _dealias_scalar!(n.vxm_hat, gridξ, ξmax)
     ldiv_all!(n.gp_phys_a, plan, n.vxm_hat)
     # i (∇·u_adv): spectral divergence -> physical (complex, pen_x), reusing div_hat
     @. n.div_hat = gridξ[1] * n.uadv_hat[1]
@@ -659,6 +648,7 @@ function calc_nlk_Lap_GP_coupled!(n::NumModelNSGP, phihat, out)
     plan = n.plan
     is3 = (length(n.fns.u) == 3)
     gridξ = spectral_grid(plan)
+    ξmax = ξmax_global(plan)
     args = is3 ? (plan.ξx, plan.ξy, plan.ξz) : (plan.ξx, plan.ξy)
     # |k|² on the last-pencil spectral grid
     if is3
@@ -680,7 +670,7 @@ function calc_nlk_Lap_GP_coupled!(n::NumModelNSGP, phihat, out)
     @. n.gp_phys_a = abs2(n.psi)
     if p.filter
         mul_all!(n.gp_tmp_hat, plan, n.gp_phys_a)
-        _dealias_scalar!(n.gp_tmp_hat, gridξ)
+        _dealias_scalar!(n.gp_tmp_hat, gridξ, ξmax)
         ldiv_all!(n.gp_phys_a, plan, n.gp_tmp_hat)
     end
     rho2 = n.gp_phys_a
@@ -693,9 +683,9 @@ function calc_nlk_Lap_GP_coupled!(n::NumModelNSGP, phihat, out)
     mul_all!(n.gp_t2_hat, plan, n.gp_phys_b)   # temp_2̂
     mul_all!(n.gp_t3_hat, plan, n.gp_phys_e)   # temp_3̂
     if p.filter
-        _dealias_scalar!(n.gp_t1_hat, gridξ)
-        _dealias_scalar!(n.gp_t2_hat, gridξ)
-        _dealias_scalar!(n.gp_t3_hat, gridξ)
+        _dealias_scalar!(n.gp_t1_hat, gridξ, ξmax)
+        _dealias_scalar!(n.gp_t2_hat, gridξ, ξmax)
+        _dealias_scalar!(n.gp_t3_hat, gridξ, ξmax)
     end
     # mass correction μ = -Σ temp_2̂ ψ̄̂ / Σ|ψ̂|²   (spectral, MPI-global sums)
     cormass2 = mapreduce(x -> real(x * conj(x)), +, phihat)
@@ -713,7 +703,7 @@ function calc_nlk_Lap_GP_coupled!(n::NumModelNSGP, phihat, out)
         @. out = n.Δt * 1im * ((n.μ + p.α * ksq) * phihat + n.gp_t1_hat)
     end
     if p.filter
-        _dealias_scalar!(out, gridξ)
+        _dealias_scalar!(out, gridξ, ξmax)
     end
     return out
 end
@@ -737,6 +727,7 @@ function calc_nlk_NS_coupled!(n::NumModelNSGP, uhat, out)
     plan = n.plan
     is3 = (length(n.fns.u) == 3)
     gridξ = spectral_grid(plan)
+    ξmax = ξmax_global(plan)
     # u = IFFT(û)  (physical)
     ldiv_all!(n.u_phys, plan, uhat)
     # ω̂ = i k × û  (spectral), then ω = IFFT(ω̂)  (physical)
@@ -762,9 +753,9 @@ function calc_nlk_NS_coupled!(n::NumModelNSGP, uhat, out)
     mul_all!(out, plan, n.ns_rhs)
     if n.param.filter
         if is3
-            dealias!(out, gridξ.x, gridξ.y, gridξ.z)
+            dealias!(out, gridξ.x, gridξ.y, gridξ.z, ξmax)
         else
-            dealias2!(out, gridξ.x, gridξ.y)
+            dealias2!(out, gridξ.x, gridξ.y, ξmax)
         end
     end
     _project_spectral!(n, out)
@@ -794,6 +785,7 @@ function timeStep!(n::NumModelNSGP)
     nvel = length(n.fns.u)
     nsfac = n.nsfac
     gridξ = spectral_grid(plan)
+    ξmax = ξmax_global(plan)
 
     # ---- Stage 1: k1 ----
     compute_u_adv_Fns!(n, n.phihat, n.u_hat)
@@ -857,9 +849,9 @@ function timeStep!(n::NumModelNSGP)
     _project_spectral!(n, n.u_hat)
     if p.filter
         for c in 1:nvel
-            _dealias_scalar!(n.u_hat[c], gridξ)
+            _dealias_scalar!(n.u_hat[c], gridξ, ξmax)
         end
-        _dealias_scalar!(n.phihat, gridξ)
+        _dealias_scalar!(n.phihat, gridξ, ξmax)
     end
     # sync the canonical physical fields (for plotting / writers / next step)
     ldiv_all!(n.fns.u, plan, n.u_hat)

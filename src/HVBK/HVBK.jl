@@ -257,10 +257,11 @@ end
 """
 function _hvbk_dealias!(n::NumModelHVBK, uhat)
     gridξ = spectral_grid(n.plan)
+    ξmax = ξmax_global(n.plan)
     if ndims(gridξ) == 3
-        dealias!(uhat, gridξ.x, gridξ.y, gridξ.z)
+        dealias!(uhat, gridξ.x, gridξ.y, gridξ.z, ξmax)
     else
-        dealias2!(uhat, gridξ.x, gridξ.y)
+        dealias2!(uhat, gridξ.x, gridξ.y, ξmax)
     end
     return nothing
 end

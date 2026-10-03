@@ -135,16 +135,10 @@ Runge-Kutta methods exhibit on the dispersive Gross-Pitaevskii spectrum.
 function _gp_dealias!(n::NumModelGPRK)
     gridξ = getfield(SuperfluidDynamics, :spectral_grid)(n.plan)
     mul_all!(n.shat, n.plan, n.f.ϕ)
+    ξmax = getfield(SuperfluidDynamics, :ξmax_global)(n.plan)
     if ndims(gridξ) == 3
-        func = x -> x^2
-        ξmax = 4 / 9 * minimum((maximum(func, gridξ.x.data),
-                                maximum(func, gridξ.y.data),
-                                maximum(func, gridξ.z.data)))
         @. n.shat *= (gridξ.x^2 + gridξ.y^2 + gridξ.z^2) < ξmax
     else
-        func = x -> x^2
-        ξmax = 4 / 9 * minimum((maximum(func, gridξ.x.data),
-                                maximum(func, gridξ.y.data)))
         @. n.shat *= (gridξ.x^2 + gridξ.y^2) < ξmax
     end
     ldiv_all!(n.f.ϕ, n.plan, n.shat)

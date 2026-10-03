@@ -294,10 +294,11 @@ end
 """
 function dealias_dim!(n::NumModelRK4Imp, k_hat)
     gridξ = spectral_grid(n.plan)
+    ξmax = ξmax_global(n.plan)
     if length(n.f.g.data) == 3
-        dealias!(k_hat, gridξ.x, gridξ.y, gridξ.z)
+        dealias!(k_hat, gridξ.x, gridξ.y, gridξ.z, ξmax)
     else
-        dealias2!(k_hat, gridξ.x, gridξ.y)
+        dealias2!(k_hat, gridξ.x, gridξ.y, ξmax)
     end
     return nothing
 end

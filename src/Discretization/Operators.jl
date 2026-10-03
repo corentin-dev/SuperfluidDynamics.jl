@@ -21,16 +21,30 @@ function cross!(c, a, b)
     return c
 end
 
+# 2/3-rule bound ξmax = (4/9)·min_d max_d' |ξ_d'|², from the plan's GLOBAL
+# wavenumber vectors. The spectral fields are dealiased on the last pencil,
+# whose grid is distributed over two directions: a rank-local max sees only
+# part of the spectrum, its bound is smaller than the global one, and the rank
+# then zeroes modes its peers keep — physics that depends on the rank count
+# (measured: 1.9e-3 energy drift 1→4 ranks at N=48, benchmarks/
+# scalability_rankinv.jl). The plan stores the full (undistributed) ξ vectors,
+# so the global bound costs nothing and needs no MPI reduction.
+function ξmax_global(plan::AbstractFFTPlan)
+    sq = x -> x^2
+    # dimension test on the plan's own fields (the {N} parameter counts data
+    # components, not dimensions): 3D plans carry ξz.
+    ξs = isdefined(plan, :ξz) ? (plan.ξx, plan.ξy, plan.ξz) : (plan.ξx, plan.ξy)
+    return 4 / 9 * minimum(maximum(sq, ξ) for ξ in ξs)
+end
+
 """
-    dealias!(u_hat, ξx, ξy, ξz)
+    dealias!(u_hat, ξx, ξy, ξz, ξmax)
 
 2/3-rule dealiasing: zero out the modes of the spectral vector field `u_hat`
-whose |k|² exceeds (4/9)·min(|k|max)² of each direction.
+whose |k|² exceeds `ξmax` (the GLOBAL bound from `ξmax_global`; passing a
+rank-local bound makes the filtered modes depend on the rank count).
 """
-function dealias!(u_hat, ξx, ξy, ξz)
-    func = x -> x^2
-    ξmax = 4 / 9 * minimum((maximum(func, ξx.data), maximum(func, ξy.data),
-                            maximum(func, ξz.data)))
+function dealias!(u_hat, ξx, ξy, ξz, ξmax)
     @. u_hat[1] *= (ξx^2 + ξy^2 + ξz^2) < ξmax
     @. u_hat[2] *= (ξx^2 + ξy^2 + ξz^2) < ξmax
     @. u_hat[3] *= (ξx^2 + ξy^2 + ξz^2) < ξmax
@@ -38,13 +52,12 @@ function dealias!(u_hat, ξx, ξy, ξz)
 end
 
 """
-    dealias2!(u_hat, ξx, ξy)
+    dealias2!(u_hat, ξx, ξy, ξmax)
 
-2/3-rule dealiasing for a 2-component (2D) spectral velocity field `u_hat`.
+2/3-rule dealiasing for a 2-component (2D) spectral velocity field `u_hat`
+(`ξmax` must be the global bound from `ξmax_global`).
 """
-function dealias2!(u_hat, ξx, ξy)
-    func = x -> x^2
-    ξmax = 4 / 9 * minimum((maximum(func, ξx.data), maximum(func, ξy.data)))
+function dealias2!(u_hat, ξx, ξy, ξmax)
     @. u_hat[1] *= (ξx^2 + ξy^2) < ξmax
     @. u_hat[2] *= (ξx^2 + ξy^2) < ξmax
     return nothing

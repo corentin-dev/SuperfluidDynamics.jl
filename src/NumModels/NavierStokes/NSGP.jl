@@ -558,13 +558,16 @@ function compute_u_adv_Fns!(n::NumModelNSGP, phihat, uhat)
         @. n.uadv_phys[1] = amp * wp1
         @. n.uadv_phys[2] = amp * wp2
         @. n.uadv_phys[3] = amp * wp3
-        # F_SN = ρs Ω × (c_U w_p + c_V (Ω×w))   [c_V already includes F]
+        # F_SN = ρs v × Ω  with  v = c_U w_p + c_V (Ω×w)   [c_V already includes F]
+        # (same convention as the 2D branch below, which this reduces to for
+        # Ω ∥ ẑ). With c_V ≤ 0 the force opposes the counterflow:
+        # F_SN·w = ρs c_V |Ω|² |w_p|² ≤ 0, i.e. it is a friction on the normal fluid.
         v1 = @. CU * wp1 + CV * (o2 * w3 - o3 * w2)
         v2 = @. CU * wp2 + CV * (o3 * w1 - o1 * w3)
         v3 = @. CU * wp3 + CV * (o1 * w2 - o2 * w1)
-        @. n.fns_phys[1] = p.ρs * (o2 * v3 - o3 * v2)
-        @. n.fns_phys[2] = p.ρs * (o3 * v1 - o1 * v3)
-        @. n.fns_phys[3] = p.ρs * (o1 * v2 - o2 * v1)
+        @. n.fns_phys[1] = p.ρs * (v2 * o3 - v3 * o2)
+        @. n.fns_phys[2] = p.ρs * (v3 * o1 - v1 * o3)
+        @. n.fns_phys[3] = p.ρs * (v1 * o2 - v2 * o1)
     else
         # 2D: Ω = (0, 0, Ωz) ∥ ẑ, w ⊥ ẑ  =>  w_p = w
         vz = real(parent(n.omega_phys[2]))
@@ -579,7 +582,9 @@ function compute_u_adv_Fns!(n::NumModelNSGP, phihat, uhat)
         amp = CU .+ 1im * (CV .* abs.(vz))
         @. n.uadv_phys[1] = amp * w1
         @. n.uadv_phys[2] = amp * w2
-        # F_SN = Ω × (ρs (c_U w + c_V (w×Ω))),  Ω×(w×Ω) = |Ω|² w - (w·Ω)Ω = |Ωz|² w
+        # F_SN = ρs v × Ω  with  v = c_U w + c_V (Ω×w)  (Ω = Ωz ẑ, w ⊥ ẑ):
+        #   v = (c_U w1 - c_V w2 Ωz, c_U w2 + c_V w1 Ωz),  v×Ω = (v2 Ωz, -v1 Ωz).
+        # F_SN·w = ρs c_V Ωz² |w|² ≤ 0 for c_V ≤ 0: friction on the normal fluid.
         usn1 = @. p.ρs * (CU * w1 - CV * w2 * vz)
         usn2 = @. p.ρs * (CU * w2 + CV * w1 * vz)
         @. n.fns_phys[1] = vz * usn2

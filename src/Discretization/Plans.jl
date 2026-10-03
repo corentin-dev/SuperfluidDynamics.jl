@@ -1228,7 +1228,7 @@ end
 function ldiv_x!(u_out::Vector{<:AbstractArray}, plan::AbstractFFTPlan{N},
                  u_in::Vector{<:AbstractArray}) where {N}
     for i in 1:N
-        ldiv_x!(u_out[i], plan.plan_x, u_in[i])
+        ldiv_x!(u_out[i], plan, u_in[i])
     end
     return nothing
 end
@@ -1260,7 +1260,7 @@ end
 function ldiv_z!(u_out::Vector{<:AbstractArray}, plan::AbstractFFTPlan{N},
                  u_in::Vector{<:AbstractArray}) where {N}
     for i in 1:N
-        ldiv_z!(u_out[i], plan.plan_x, u_in[i])
+        ldiv_z!(u_out[i], plan, u_in[i])
     end
     return nothing
 end

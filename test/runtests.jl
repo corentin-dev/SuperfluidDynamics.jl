@@ -1178,6 +1178,102 @@ end
     @test maximum(abs.(parent(d))) < 1e-9 * maximum(abs.(parent(n.u_hat[1])))
 end
 
+# --------------------------------------------------------------------------
+# NSGP in 3D
+# --------------------------------------------------------------------------
+# (1) A z-invariant 3D state (cubic box, nz = nx so the 2/3-rule cut-offs agree)
+#     must reproduce the validated 2D evolution slice by slice: same friction
+#     force at the first evaluation (this fixes the sign convention of F_SN in the
+#     3D branch), same velocity and wavefunction after a few steps, uz = 0.
+@testset "NSGP 3D: z-invariant state reproduces the 2D evolution" begin
+    N, L = 24, 4.0
+    g2 = Grid((N, N), ((-L, L), (-L, L)))
+    g3 = Grid((N, N, N), ((-L, L), (-L, L), (-L, L)))
+    function setup(g, nd)
+        fgp = Field(g, ComplexField(); ndims=nd)
+        fns = Field(g, ComplexField(); ndims=nd)
+        X = reshape(vec(fgp.x), :, 1, (nd == 3 ? (1,) : ())...)
+        Y = reshape(vec(fgp.y), 1, :, (nd == 3 ? (1,) : ())...)
+        r2 = X .^ 2 .+ Y .^ 2
+        fgp.ϕ .= (sqrt.(r2) ./ sqrt.(r2 .+ 1.0)) .* exp.(1im .* atan.(Y, X))
+        k = 2π / (2L)
+        @. fns.ux = 0.3 * sin(k * fns.y) * cos(k * fns.x)
+        @. fns.uy = -0.3 * cos(k * fns.y) * sin(k * fns.x)
+        nd == 3 && (fns.uz .= 0)
+        p = NSGPParameters(; α=-0.01, ν=0.01, β=1.0, ρn=0.5, ρs=0.5,
+                           Btab=0.4, Bptab=0.1, ξ=1.0, ε2=0.1)
+        return NumModelNSGP(fgp, fns, p, 0.003, 4, 1; stepper="RK2Imp"), fgp, fns
+    end
+    n2, fgp2, fns2 = setup(g2, 2)
+    n3, fgp3, fns3 = setup(g3, 3)
+
+    # every z-slice of the 3D array (raw, memory == logical order for a Field)
+    # against the 2D array
+    close2d(a3, a2; tol=1e-9) = all(1:N) do k
+        maximum(abs.(a3[:, :, k] .- a2)) <= tol * max(maximum(abs.(a2)), 1e-30)
+    end
+
+    SuperfluidDynamics.compute_u_adv_Fns!(n2, n2.phihat, n2.u_hat)
+    SuperfluidDynamics.compute_u_adv_Fns!(n3, n3.phihat, n3.u_hat)
+    @test maximum(abs.(real.(parent(n2.fns_phys[1])))) > 1e-6      # non-trivial force
+    for c in 1:2
+        @test close2d(real.(parent(n3.fns_phys[c])), real.(parent(n2.fns_phys[c])))
+    end
+    @test maximum(abs.(parent(n3.fns_phys[3]))) <
+          1e-9 * maximum(abs.(parent(n3.fns_phys[1])))
+
+    for _ in 1:4
+        SuperfluidDynamics.timeStep!(n2)
+        SuperfluidDynamics.timeStep!(n3)
+    end
+    @test close2d(parent(fns3.u[1]), parent(fns2.u[1]))
+    @test close2d(parent(fns3.u[2]), parent(fns2.u[2]))
+    @test close2d(parent(fgp3.ϕ), parent(fgp2.ϕ))
+    @test maximum(abs.(parent(fns3.u[3]))) <
+          1e-9 * maximum(abs.(parent(fns3.u[1])))
+end
+
+# (2) A genuinely 3D state (tilted superfluid vortex line, Taylor-Green normal
+#     flow): the evolution stays finite and divergence-free, and the mutual
+#     friction is dissipative, ∫ F_SN·w ≤ 0 with w = v_n - v_s^reg. The
+#     Helmholtz projection and the 2/3 mask are orthogonal and w is
+#     divergence-free, so this holds exactly for the projected force.
+@testset "NSGP 3D: tilted vortex line, finite, divergence-free, friction dissipative" begin
+    N, L = 16, 4.0
+    g = Grid((N, N, N), ((-L, L), (-L, L), (-L, L)))
+    fgp = Field(g, ComplexField(); ndims=3)
+    fns = Field(g, ComplexField(); ndims=3)
+    X = reshape(vec(fgp.x), :, 1, 1)
+    Y = reshape(vec(fgp.y), 1, :, 1)
+    Z = reshape(vec(fgp.z), 1, 1, :)
+    φ = π / 6                                   # line direction (0, sin φ, cos φ)
+    U = X
+    V = @. Y * cos(φ) - Z * sin(φ)
+    r2 = @. U^2 + V^2
+    fgp.ϕ .= (sqrt.(r2) ./ sqrt.(r2 .+ 1.0)) .* exp.(1im .* atan.(V, U))
+    k = 2π / (2L)
+    @. fns.ux = 0.3 * sin(k * fns.y) * cos(k * fns.x) * cos(k * fns.z)
+    @. fns.uy = -0.3 * cos(k * fns.y) * sin(k * fns.x) * cos(k * fns.z)
+    fns.uz .= 0
+    p = NSGPParameters(; α=-0.01, ν=0.01, β=1.0, ρn=0.5, ρs=0.5,
+                       Btab=0.4, Bptab=0.1, ξ=1.0, ε2=0.1)
+    n = NumModelNSGP(fgp, fns, p, 0.003, 4, 1; stepper="RK2Imp")
+
+    SuperfluidDynamics.compute_u_adv_Fns!(n, n.phihat, n.u_hat)
+    work = sum(c -> sum(real.(parent(n.fns_phys[c])) .* real.(parent(n.w_phys[c]))), 1:3)
+    @test maximum(abs.(real.(parent(n.fns_phys[1])))) > 1e-6
+    @test work < 0                                  # friction opposes the counterflow
+
+    for _ in 1:4
+        SuperfluidDynamics.timeStep!(n)
+        @test all(isfinite.(parent(n.phihat)))
+        @test all(isfinite.(parent(n.u_hat[1])))
+    end
+    gξ = SuperfluidDynamics.spectral_grid(n.plan)
+    d = @. gξ.x * n.u_hat[1] + gξ.y * n.u_hat[2] + gξ.z * n.u_hat[3]
+    @test maximum(abs.(parent(d))) < 1e-9 * maximum(abs.(parent(n.u_hat[1])))
+end
+
 # ==========================================================================
 # HVBK linear two-fluid model
 # ==========================================================================

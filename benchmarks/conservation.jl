@@ -52,18 +52,28 @@ elseif MODEL == "hvbk"
     inv0 = (energy(model)[4], nothing)
 elseif MODEL == "nsgp"
     # 2D setup of the NSGP_2D example: regularised vortex + Taylor-Green.
+    # NSGP_DIM=3 runs the same state, invariant along z (the 3D branch of the
+    # friction force is then the one being applied, and the 2D/3D agreement is
+    # established separately in test/runtests.jl).
     dt = 0.002
-    grid = Grid((N, N), ((-8, 8), (-8, 8)))
-    fgp_ = Field(grid, ComplexField(); ndims=2)
-    fns_ = Field(grid, ComplexField(); ndims=2)
+    DIM = parse(Int, get(ENV, "NSGP_DIM", "2"))
+    NZ = parse(Int, get(ENV, "NSGP_NZ", "32"))
+    dims = DIM == 3 ? (N, N, NZ) : (N, N)
+    bounds = DIM == 3 ? ((-8, 8), (-8, 8), (-8, 8)) : ((-8, 8), (-8, 8))
+    grid = Grid(dims, bounds)
+    fgp_ = Field(grid, ComplexField(); ndims=DIM)
+    fns_ = Field(grid, ComplexField(); ndims=DIM)
     aa = 0.8
-    X2 = reshape(vec(fgp_.x), :, 1)
-    Y2 = reshape(vec(fgp_.y), 1, :)
+    shp = DIM == 3 ? (:, 1, 1) : (:, 1)
+    X2 = reshape(vec(fgp_.x), shp...)
+    shp2 = DIM == 3 ? (1, :, 1) : (1, :)
+    Y2 = reshape(vec(fgp_.y), shp2...)
     r2 = X2.^2 .+ Y2.^2
     fgp_.ϕ .= (sqrt.(r2) ./ sqrt.(r2 .+ aa^2)) .* exp.(1im * atan.(Y2, X2))
     kx = 2π / grid.Lx; ky = 2π / grid.Ly
     @. fns_.ux = 0.3 * sin(ky * fns_.y) * cos(kx * fns_.x)
     @. fns_.uy = -0.3 * cos(ky * fns_.y) * sin(kx * fns_.x)
+    DIM == 3 && (@. fns_.uz = 0)  # z-invariant state, no mean flow along z
     model = NumModelNSGP(fgp_, fns_,
                          NSGPParameters(; α=-0.02, ν=0.01, β=1.0, ρn=0.5, ρs=0.5,
                                         Btab=0.4, Bptab=0.1, ξ=1.0, ε2=0.05,
@@ -84,8 +94,11 @@ else
     error("MODEL must be ns or gp")
 end
 
-@printf("conservation: model=%s N=%d steps=%d dt=%g E0=%.10e\n",
-        MODEL, N, STEPS, dt, inv0[1])
+# the NSGP 2D and 3D runs are different measurements of the same MODEL: tag
+# the dimension into the header so the collector keeps them apart
+dimtag = (MODEL == "nsgp" && @isdefined(DIM)) ? string("-d", DIM) : ""
+@printf("conservation: model=%s%s N=%d steps=%d dt=%g E0=%.10e\n",
+        MODEL, dimtag, N, STEPS, dt, inv0[1])
 
 period = max(1, div(STEPS, CHECKPOINT))
 t0 = time_ns()

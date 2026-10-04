@@ -30,6 +30,11 @@ const MODEL = get(ENV, "RANKINV_MODEL", "ns")
 const N = parse(Int, get(ENV, "RANKINV_N", "96"))
 const STEPS = parse(Int, get(ENV, "RANKINV_STEPS", "30"))
 const DEALIAS = parse(Int, get(ENV, "RANKINV_DEALIAS", "1")) == 1
+# Measured limit of the PROBE (not of the package): inviscid NS on this
+# broadband state at N=96 with Δt=0.01 goes NaN before step 30 — on the
+# pre-fix AND the post-fix code (checked against b8a32ba). Use RANKINV_N=48
+# for the rank-count comparison (that is also where the 1.9e-3 drift was
+# originally measured); N=96 needs a smaller Δt if one wants stable runs there.
 
 comm = MPI.COMM_WORLD
 rank = MPI.Comm_rank(comm)

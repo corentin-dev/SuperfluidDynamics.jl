@@ -410,27 +410,34 @@ eigenstate of the discrete operator — in that case the zero mode appears as a
 small-residual pair at ω ≈ ±ε and its frequency is not reliably zero. Kept
 modes are renormalized to s = 1 and returned sorted by increasing ω.
 """
-function bdg_output(n::NumModelBdG, ωs, ev; zero_ov=0.15, ψ=parent(n.f.ϕ))
+function bdg_output(n::NumModelBdG, ωs, ev; zero_ov=0.9, ψ=parent(n.f.ϕ))
     # `ψ` is the stationary state matching the layout of `ev`: the local data on one
     # rank (default), or the full replicated array when the eigenvectors are global
     # (distributed solve).
     ψp = ψ
     N = length(ψp)
+    ψn = sqrt(sum(abs2, ψp))
     dv = n.f.g.Δx * n.f.g.Δy * (ndims(ψp) == 3 ? n.f.g.Δz : 1.0)
     m = size(ev, 2)
-    # normalized zero-mode vector z = (ψ, ψ*) in the stacked eigenvector space
-    z = [vec(ψp); conj.(vec(ψp))]
-    zn = sqrt(sum(abs2, z))
-    z ./= zn
     us, vs = Any[], Any[]
     w = Float64[]
     for j in 1:m
         col = ev[:, j]
         s = (sum(abs2, col[1:N]) - sum(abs2, col[N+1:2N])) * dv
         s > 0 || continue              # ω < 0 branch (s < 0)
-        cn = sqrt(sum(abs2, col))
-        cn > 0 || continue
-        abs(z' * col) / cn < zero_ov || continue           # zero-mode cluster
+        un, vn = sqrt(sum(abs2, col[1:N])), sqrt(sum(abs2, col[N+1:2N]))
+        (un > 0 && vn > 0) || continue
+        # Structural zero-mode test: the gauge mode is (u, v) ∝ (ψ, ψ*), i.e.
+        # BOTH components are parallel to ψ. Measured (β=200, dense spectrum):
+        # the zero mode gives ov_u = ov_v = 1.0, while the breathing mode —
+        # the physical mode most collinear with ψ — reaches only ov_u = 0.43,
+        # ov_v = 0.68. An earlier version thresholded the overlap of the
+        # *stacked* vector with (ψ, ψ*); at 0.15 that silently deleted the
+        # breathing mode (ov = 0.52), which is an exact ω = 2 eigenvalue
+        # (hidden symmetry) and the package's own reference case.
+        ov_u = abs(sum(conj.(vec(ψp)) .* col[1:N])) / (un * ψn)
+        ov_v = abs(sum(vec(ψp) .* col[N+1:2N])) / (vn * ψn)
+        max(ov_u, ov_v) < zero_ov || continue             # zero mode
         u = reshape(col[1:N], size(ψp))
         v = conj.(reshape(col[N+1:2N], size(ψp)))
         push!(w, ωs[j])

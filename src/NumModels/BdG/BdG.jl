@@ -81,6 +81,11 @@ mutable struct NumModelBdG{F,P,Plan} <: AbstractNumModel{F,P,Plan}
     tol::Real
     "Krylov restarts."
     restarts::Integer
+    "Krylov basis size handed to Arpack (`ncv`); `0` = the automatic choice"
+    " `min(max(2nev+7, 20), 2N-2)`. A small trapped problem can make Arpack "
+    "report \"all possible eigenvalues of OP have been found\" at the default "
+    "basis size; raising `ncv` is then the knob (exposed, not guessed)."
+    ncv::Integer
     "eigenvalues found (filled by `timeStep!`)."
     ωs::Vector{Float64}
     "eigenvectors u (one per eigenvalue, same layout as f.ϕ)."
@@ -102,16 +107,17 @@ and the rotation `Ω`.
 
 `nev` eigenvalues are requested (per sign of ω), `which` selects the Arpack
 `which` (`:SM` = smallest |ω|, `:LM` = largest), `tol` is the eigenproblem
-tolerance (0 = Arpack default) and `restarts` is the maximum number of Krylov
-restarts.
+tolerance (0 = Arpack default), `restarts` is the maximum number of Krylov
+restarts and `ncv` the Krylov basis size (0 = automatic, see the field doc).
 """
 function NumModelBdG(f::AbstractField,
                      param::BdGParameters,
                      niter::Integer, freqbckp::Integer;
                      nev::Integer=6, which::Symbol=:SM, tol::Real=0.0,
-                     restarts::Integer=20)
+                     restarts::Integer=20, ncv::Integer=0)
     which in (:SM, :LM) || throw(ArgumentError("which must be :SM or :LM, got $which"))
     nev > 0 || throw(ArgumentError("nev must be positive, got $nev"))
+    ncv >= 0 || throw(ArgumentError("ncv must be 0 (automatic) or positive, got $ncv"))
     gf = GradientField(f; rotation=true)
     plan = Plan(f)
     writer = WriterVTK(f); saver = WriterSave(f)
@@ -119,7 +125,7 @@ function NumModelBdG(f::AbstractField,
     bfun() = similar(f.ϕ)
     return NumModelBdG{typeof(f),typeof(param),typeof(plan)}(
         f, gf, param, 0.0, niter, freqbckp, plan, writers,
-        0.0, nev, which, tol, restarts,
+        0.0, nev, which, tol, restarts, ncv,
         Float64[], Any[], Any[], bfun(), bfun())
 end
 
@@ -268,8 +274,9 @@ function timeStep!(n::NumModelBdG)
     end
 
     nev2 = 2 * n.nev + 2
+    ncv = n.ncv > 0 ? n.ncv : min(max(nev2 + 5, 20), 2N - 2)
     ew, ev = Arpack.eigs(lmap; nev=nev2, which=n.which,
-                         tol=Float64(n.tol), ncv=min(max(nev2 + 5, 20), 2N - 2),
+                         tol=Float64(n.tol), ncv=ncv,
                          maxiter=n.restarts * 1000)
     ord = sortperm(abs.(real(ew)))
     n.ωs, n.us, n.vs = bdg_output(n, real(ew[ord]), ev[:, ord])
@@ -333,6 +340,7 @@ function _timeStep_distributed!(n::NumModelBdG)
     Ng = prod(dims)
     out = [similar(n.f.ϕ), similar(n.f.ϕ)]
     nev2 = 2 * n.nev + 2
+    ncv = n.ncv > 0 ? n.ncv : min(max(nev2 + 5, 20), 2Ng - 2)
 
     ew = Vector{T}(undef, 0)
     ev = Matrix{T}(undef, 2Ng, 0)
@@ -348,7 +356,7 @@ function _timeStep_distributed!(n::NumModelBdG)
                 return _bdg_apply_global!(n, out, xb)
             end
             ew, ev = Arpack.eigs(lmap; nev=nev2, which=n.which,
-                                 tol=Float64(n.tol), ncv=min(max(nev2 + 5, 20), 2Ng - 2),
+                                 tol=Float64(n.tol), ncv=ncv,
                                  maxiter=n.restarts * 1000)
         catch
             ok[] = 0

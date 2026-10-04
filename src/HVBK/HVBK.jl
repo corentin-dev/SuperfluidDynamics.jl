@@ -87,6 +87,8 @@ mutable struct NumModelHVBK{F,P,Plan} <: AbstractNumModel{F,P,Plan}
     stepper::String
     "shared FFT plan (built on the normal field)."
     plan::Plan
+    "2/3-rule dealiasing bound (GLOBAL, rank-independent), cached at construction."
+    ξmax::Float64
     "writers (on the normal field)."
     writers::AbstractWriterCollection{F}
     "writers (on the superfluid field)."
@@ -150,7 +152,7 @@ function NumModelHVBK(fn::AbstractField,
     bufn() = [PencilArray{FT}(undef, npen) for _ in 1:length(fn.u)]
     bufx() = [PencilArray{FT}(undef, plan.pen_x) for _ in 1:length(fn.u)]
     n = NumModelHVBK{typeof(fn),typeof(param),typeof(plan)}(
-        fn, fs, param, Δt, niter, freqbckp, stepper, plan, writers, writers_s,
+        fn, fs, param, Δt, niter, freqbckp, stepper, plan, SuperfluidDynamics.ξmax_global(plan), writers, writers_s,
         fn,  # f (alias of fn, for solve! / plotting)
         bufn(),  # un_hat
         bufn(),  # us_hat
@@ -257,7 +259,7 @@ end
 """
 function _hvbk_dealias!(n::NumModelHVBK, uhat)
     gridξ = spectral_grid(n.plan)
-    ξmax = ξmax_global(n.plan)
+    ξmax = n.ξmax
     if ndims(gridξ) == 3
         dealias!(uhat, gridξ.x, gridξ.y, gridξ.z, ξmax)
     else

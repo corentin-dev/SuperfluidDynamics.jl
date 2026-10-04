@@ -133,6 +133,9 @@ mutable struct NumModelRK4Imp{F,P,Plan} <: AbstractNumModel{F,P,Plan}
     freqbckp::Integer
     "plan to compute derivatives."
     plan::Plan
+    "2/3-rule dealiasing bound (GLOBAL, rank-independent) cached at construction:"
+    " recomputing it per RK stage would be a device reduction + sync on the GPU."
+    ξmax::Float64
     "writers for backups."
     writers::AbstractWriterCollection{F}
 
@@ -201,7 +204,7 @@ function NumModelRK4Imp(f::AbstractField{N,ND,FT,FFT,A},
     buf_last() = [PencilArray{FFT}(undef, npen) for _ in 1:nvel]
     buf_x() = [PencilArray{FFT}(undef, plan.pen_x) for _ in 1:nvel]
     return NumModelRK4Imp{typeof(f),typeof(param),typeof(plan)}(
-        f, param, Δt, niter, freqbckp, plan, writers,
+        f, param, Δt, niter, freqbckp, plan, SuperfluidDynamics.ξmax_global(plan), writers,
         buf_last(), buf_last(), buf_last(), buf_last(), buf_last(), buf_last(), buf_last(),
         PencilArray{FFT}(undef, npen),
         buf_x(), buf_x(), buf_x(), PencilArray{FFT}(undef, plan.pen_x))
@@ -294,7 +297,7 @@ end
 """
 function dealias_dim!(n::NumModelRK4Imp, k_hat)
     gridξ = spectral_grid(n.plan)
-    ξmax = ξmax_global(n.plan)
+    ξmax = n.ξmax
     if length(n.f.g.data) == 3
         dealias!(k_hat, gridξ.x, gridξ.y, gridξ.z, ξmax)
     else

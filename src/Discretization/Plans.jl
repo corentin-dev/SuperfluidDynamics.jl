@@ -541,6 +541,26 @@ function ξsquared2(ξx::Real, ξy::Real)
 end
 
 """
+    ξmax_global(plan)
+
+2/3-rule bound ξmax = (4/9)·min_d max|ξ_d|², from the plan's GLOBAL
+wavenumber vectors. The spectral fields are dealiased on the last pencil,
+whose grid is distributed over two directions: a rank-local max sees only
+part of the spectrum, its bound is smaller than the global one, and the rank
+then zeroes modes its peers keep — physics that depends on the rank count
+(measured: 1.9e-3 energy drift 1→4 ranks at N=48, benchmarks/
+scalability_rankinv.jl). The plan stores the full (undistributed) ξ vectors,
+so the global bound costs nothing and needs no MPI reduction. Typed 2D/3D
+methods (no `isdefined` probe); models cache the value at construction
+(`n.ξmax`) so stepping does not re-reduce the ξ vectors — on GPU each call
+would be a device reduction plus a synchronisation.
+"""
+ξmax_global(plan::PlanFFT2D) = (4 / 9) * min(maximum(abs2, plan.ξx), maximum(abs2, plan.ξy))
+function ξmax_global(plan::PlanFFT3D)
+    return (4 / 9) * min(maximum(abs2, plan.ξx), maximum(abs2, plan.ξy), maximum(abs2, plan.ξz))
+end
+
+"""
 $(TYPEDEF)
 
 Type representing a 2D finite difference plan.

@@ -211,6 +211,9 @@ mutable struct NumModelNSGP{FG, FN, P, PlanN} <: AbstractNumModel{FN, P, PlanN}
     μ::ComplexF64
     "GP η_D dissipation factor (complex scalar)."
     dissip::ComplexF64
+    "2/3-rule dealiasing bound (GLOBAL, rank-independent), cached at construction"
+    " — recomputing it per RK stage would be a device reduction + sync on the GPU."
+    ξmax::Float64
 end
 
 function NumModelNSGP(fgp::AbstractField,
@@ -279,7 +282,8 @@ function NumModelNSGP(fgp::AbstractField,
         bufx(),                            # ns_rhs
         PencilArray{Float64}(undef, npen), # nsfac
         0.0im,  # μ
-        0.0im)  # dissip
+        0.0im,  # dissip
+        SuperfluidDynamics.ξmax_global(plan))  # ξmax (global 2/3 bound)
     # NS implicit viscosity factor exp(-νΔt|k|²) on the last-pencil spectral grid
     gridξ0 = spectral_grid(n.plan)
     ksq0 = _kxsq(gridξ0)
@@ -401,7 +405,7 @@ function _gauss_smooth!(n::NumModelNSGP, uhat)
     gridξ = spectral_grid(n.plan)
     kreg2 = n.param.kreg^2
     ksq = _kxsq(gridξ)
-    ξmax = ξmax_global(n.plan)
+    ξmax = n.ξmax
     if ndims(gridξ) == 3
         wvn = @. ksq(gridξ.x, gridξ.y, gridξ.z)
         filt = @. ifelse(wvn < ξmax, exp(-wvn / kreg2), 0.0)
@@ -497,7 +501,7 @@ function compute_u_adv_Fns!(n::NumModelNSGP, phihat, uhat)
     mul_all!(n.us_hat, plan, n.us_phys)
     _gauss_smooth!(n, n.us_hat)
     gridξ = spectral_grid(plan)
-    ξmax = ξmax_global(plan)
+    ξmax = n.ξmax
     if is3
         # Ω = ∇×u_s^reg (spectral); same operator as the NS vorticity
         @. n.omega_hat[1] = 1im * (gridξ.y * n.us_hat[3] - gridξ.z * n.us_hat[2])
@@ -648,7 +652,7 @@ function calc_nlk_Lap_GP_coupled!(n::NumModelNSGP, phihat, out)
     plan = n.plan
     is3 = (length(n.fns.u) == 3)
     gridξ = spectral_grid(plan)
-    ξmax = ξmax_global(plan)
+    ξmax = n.ξmax
     args = is3 ? (plan.ξx, plan.ξy, plan.ξz) : (plan.ξx, plan.ξy)
     # |k|² on the last-pencil spectral grid
     if is3
@@ -727,7 +731,7 @@ function calc_nlk_NS_coupled!(n::NumModelNSGP, uhat, out)
     plan = n.plan
     is3 = (length(n.fns.u) == 3)
     gridξ = spectral_grid(plan)
-    ξmax = ξmax_global(plan)
+    ξmax = n.ξmax
     # u = IFFT(û)  (physical)
     ldiv_all!(n.u_phys, plan, uhat)
     # ω̂ = i k × û  (spectral), then ω = IFFT(ω̂)  (physical)
@@ -785,7 +789,7 @@ function timeStep!(n::NumModelNSGP)
     nvel = length(n.fns.u)
     nsfac = n.nsfac
     gridξ = spectral_grid(plan)
-    ξmax = ξmax_global(plan)
+    ξmax = n.ξmax
 
     # ---- Stage 1: k1 ----
     compute_u_adv_Fns!(n, n.phihat, n.u_hat)

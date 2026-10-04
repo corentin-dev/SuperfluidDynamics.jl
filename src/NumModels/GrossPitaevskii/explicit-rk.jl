@@ -40,6 +40,9 @@ mutable struct NumModelGPRK{F,P,Plan} <: AbstractNumModel{F,P,Plan}
     "time-stepping scheme: \"RK1\", \"RK2\" or \"RK4\"."
     stepper::String
     plan::Plan
+    "2/3-rule dealiasing bound (GLOBAL, rank-independent), cached at construction"
+    " — recomputing it per step would be a device reduction + sync on the GPU."
+    ξmax::Float64
     writers::AbstractWriterCollection{F}
     "RK stage / derivative scratch (same layout as f.ϕ)."
     k1::PencilArray
@@ -65,7 +68,7 @@ function NumModelGPRK(f::AbstractField,
     npen = getfield(SuperfluidDynamics, :last_pencil)(plan)
     shat = PencilArray{eltype(f.ϕ)}(undef, npen)
     return NumModelGPRK{typeof(f),typeof(param),typeof(plan)}(
-        f, gf, param, Δt, niter, freqbckp, stepper, plan, writers,
+        f, gf, param, Δt, niter, freqbckp, stepper, plan, SuperfluidDynamics.ξmax_global(plan), writers,
         bfun(), bfun(), bfun(), bfun(), bfun(), shat, true)
 end
 
@@ -135,7 +138,7 @@ Runge-Kutta methods exhibit on the dispersive Gross-Pitaevskii spectrum.
 function _gp_dealias!(n::NumModelGPRK)
     gridξ = getfield(SuperfluidDynamics, :spectral_grid)(n.plan)
     mul_all!(n.shat, n.plan, n.f.ϕ)
-    ξmax = getfield(SuperfluidDynamics, :ξmax_global)(n.plan)
+    ξmax = n.ξmax
     if ndims(gridξ) == 3
         @. n.shat *= (gridξ.x^2 + gridξ.y^2 + gridξ.z^2) < ξmax
     else

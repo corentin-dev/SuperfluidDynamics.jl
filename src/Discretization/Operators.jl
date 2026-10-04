@@ -21,21 +21,9 @@ function cross!(c, a, b)
     return c
 end
 
-# 2/3-rule bound ξmax = (4/9)·min_d max_d' |ξ_d'|², from the plan's GLOBAL
-# wavenumber vectors. The spectral fields are dealiased on the last pencil,
-# whose grid is distributed over two directions: a rank-local max sees only
-# part of the spectrum, its bound is smaller than the global one, and the rank
-# then zeroes modes its peers keep — physics that depends on the rank count
-# (measured: 1.9e-3 energy drift 1→4 ranks at N=48, benchmarks/
-# scalability_rankinv.jl). The plan stores the full (undistributed) ξ vectors,
-# so the global bound costs nothing and needs no MPI reduction.
-function ξmax_global(plan::AbstractFFTPlan)
-    sq = x -> x^2
-    # dimension test on the plan's own fields (the {N} parameter counts data
-    # components, not dimensions): 3D plans carry ξz.
-    ξs = isdefined(plan, :ξz) ? (plan.ξx, plan.ξy, plan.ξz) : (plan.ξx, plan.ξy)
-    return 4 / 9 * minimum(maximum(sq, ξ) for ξ in ξs)
-end
+# The 2/3-rule bound `ξmax_global` lives in Plans.jl (defined right after the
+# plan types, so every consumer — NS, NSGP, GP-RK, HVBK — sees it), and models
+# cache it as `n.ξmax` at construction.
 
 """
     dealias!(u_hat, ξx, ξy, ξz, ξmax)

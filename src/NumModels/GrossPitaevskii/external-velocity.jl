@@ -105,7 +105,10 @@ function timeStep!(n::NumModelExternalVelocity{F}) where {F<:AbstractField3D}
              +
              β * ϕ
              -
-             (uadvx^2 + uadvy^2) / (-4 * coeffΔ) * ϕ
+             # terme « potentiel » de la complétion au carré |u|²/(-4 coeffΔ):
+             # les TROIS composantes, puisque l'advection ci-dessous contient déjà
+             # uadvz·∂z — sans cela le schéma dépend de l'étiquette des axes
+             (uadvx^2 + uadvy^2 + uadvz^2) / (-4 * coeffΔ) * ϕ
              -
              im * uadvx * n.gf.dx - im * uadvy * n.gf.dy - im * uadvz * n.gf.dz)
     # ψ₁hat

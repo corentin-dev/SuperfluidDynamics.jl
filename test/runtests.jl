@@ -1364,6 +1364,51 @@ end
 end
 
 # ==========================================================================
+# ARGLE (external velocity): Cartesian axis symmetry of the |u|^2 term
+# ==========================================================================
+@testset "ARGLE 3D external velocity: isotropy under axis relabeling" begin
+    # The scheme puts in psi1 both an advection term -i u.grad and a potential
+    # term |u|^2/(-4 coeffD). Regression (fixed in 2025-10): the 3D method used
+    # uadvx^2 + uadvy^2, dropping uadvz^2, while the advection DID contain
+    # uadvz*dz. Measured defect: 2.0% density difference between two labelings
+    # of the same physical problem, and norms drifting apart. The 2D method is
+    # correct as shipped (PotentialExternalVelocity sets uadvz = [] in 2D).
+    N, U0, cD = 32, 0.3, -0.5
+    grid = Grid((N, N, N), ((0.0, 2π), (0.0, 2π), (0.0, 2π)))
+    f0(x, y, z) = 0.0
+    function run_argle(uf)
+        field = Field(grid, ComplexField())
+        r2 = (field.x .- π) .^ 2 .+ (field.y .- π) .^ 2 .+ (field.z .- π) .^ 2
+        field.ϕ .= exp.(-r2 ./ 0.5)   # invariant under x <-> z
+        normalize!(field)
+        pot = PotentialExternalVelocity(field; uadv_function=uf, α=-4 * cD)
+        p = GrossPitaevskiiParameters(; coeffΔ=cD, β=0.0, pot=pot)
+        n = NumModelExternalVelocity(field, p, 0.01, 50, 1000)
+        for _ in 1:50
+            SuperfluidDynamics.timeStep!(n)
+        end
+        return abs.(field.ϕ), norm(field)
+    end
+    rho_x, nx = run_argle(((x, y, z) -> U0 * cos(x), f0, f0))
+    rho_z, nz = run_argle((f0, f0, (x, y, z) -> U0 * cos(z)))
+    @test nx ≈ nz rtol = 1e-12          # same problem -> same norm
+    @test relerr(rho_z, permutedims(rho_x, (3, 2, 1))) < 1e-12
+    # 2D path must keep working (uadvz is undefined there by construction)
+    g2 = Grid((32, 32), ((0.0, 2π), (0.0, 2π)))
+    f2 = Field(g2, ComplexField())
+    f2.ϕ .= exp.(-((g2.x .- π) .^ 2 .+ (g2.y .- π) .^ 2) ./ 0.5)
+    normalize!(f2)
+    pot2 = PotentialExternalVelocity(f2; uadv_function=((x, y) -> U0 * cos(x),
+                                                        (x, y) -> 0.0),
+                                     α=-4 * cD)
+    n2 = NumModelExternalVelocity(f2, GrossPitaevskiiParameters(; coeffΔ=cD,
+                                                               β=0.0, pot=pot2),
+                                  0.01, 2, 100)
+    SuperfluidDynamics.timeStep!(n2)
+    @test all(isfinite.(real.(parent(f2.ϕ)))) && all(isfinite.(imag.(parent(f2.ϕ))))
+end
+
+# ==========================================================================
 # Bogoliubov-de Gennes (matrix-free eigensolver)
 # ==========================================================================
 @testset "BdG anisotropic 2D harmonic oscillator: analytic spectrum (2D)" begin

@@ -32,4 +32,13 @@ keywords:
 license: MIT
 version: 2.1.1
 date-released: 2026-10-06
-# doi: 10.5281/zenodo.XXXXXXX   # add after the Zenodo deposit of v2.1.0
+# Persistent identifiers. Software Heritage (requested 2026-10-06, visit
+# "full"): refs/tags/v2.1.1 resolves to revision a10a058f, which is what should
+# be cited. GitLab is not harvestable by Zenodo's GitHub/OAuth path, so the
+# archive has to go through SWH (or a Zenodo upload of the tag's zip) — see
+# identifiers below; the DOI stays commented until the deposit is done.
+identifiers:
+  - type: swh
+    value: "swh:1:rev:a10a058fb1383f351cfcc64ae0a7b49756dd8e7d"
+    description: "Software Heritage archive of the v2.1.1 release (tag target revision)"
+# doi: 10.5281/zenodo.XXXXXXX   # add after the Zenodo deposit of v2.1.1

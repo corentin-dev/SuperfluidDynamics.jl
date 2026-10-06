@@ -1409,6 +1409,70 @@ end
 end
 
 # ==========================================================================
+# BdG zero-mode filter: structural, calibrated over a parameter sweep
+# ==========================================================================
+@testset "BdG zero-mode filter: sweep calibration (small cases)" begin
+    # The filter drops a column when BOTH overlaps with ψ exceed zero_ov:
+    # ov_u = |<psi,u>|/||u|| ||psi||, ov_v = |<psi*,v>|/||v|| ||psi||.
+    # Dense-spectrum sweep (beta = 50..3000, anisotropic trap, vortex state;
+    # runs repo scripts/bdg_filter_sweep.jl): the zero mode has
+    # min(ov_u, ov_v) = 1.0 everywhere; the largest PHYSICAL overlap anywhere
+    # in the sweep is 0.74 (beta=50, and it grows as beta decreases). These two
+    # small cases pin both ends of that calibration through the public path:
+    # (a) weakly interacting trap: Kohn (omega=1, ov ~ 0.74) SURVIVES the filter
+    #     and the zero mode is gone; (b) vortex state: the zero mode sits at
+    #     omega = 0.002 (frequency filters would misjudge it) and is removed
+    #     structurally, while low positive modes remain.
+    # 24² keeps this fast; the calibration itself is a sweep, not a point.
+    function bdg_modes(N, L, β; γx=1.0, γy=1.0, vortex=false, nev=8, ncv=0)
+        g = Grid((N, N), ((-L, L), (-L, L)))
+        f = Field(g, ComplexField())
+        pot = PotentialQuadratic(f; γx=γx, γy=γy)
+        param = GrossPitaevskiiParameters(; coeffΔ=-0.5, β=β, Ω=0.0, pot=pot)
+        @. f.ϕ = exp(-0.5 * (f.x^2 + f.y^2))
+        normalize!(f)
+        nit = 1500
+        nimg = NumModelBackwardEuler(f, param, 0.05, nit, nit + 1; nkrylov=200, tolkrylov=1e-8)
+        for _ in 1:nit
+            SuperfluidDynamics.timeStep!(nimg)
+        end
+        if vortex
+            EΩ, EΔ, Eβ, E = SuperfluidDynamics.energy(nimg)
+            ξc = 1 / sqrt(2(-EΩ + EΔ + 2Eβ))
+            @. f.ϕ = f.ϕ * hypot(f.x, f.y) / sqrt(hypot(f.x, f.y)^2 + 2ξc^2) *
+                     cis(atan(f.y, f.x))
+            normalize!(f)
+            nv = NumModelBackwardEuler(f, param, 0.05, 800, 801; nkrylov=200, tolkrylov=1e-8)
+            for _ in 1:800
+                SuperfluidDynamics.timeStep!(nv)
+            end
+        end
+        bdgp = BdGParameters(; coeffΔ=-0.5, β=β, pot=pot, Ω=0.0)
+        nb = NumModelBdG(f, bdgp, 1, 1; nev=nev, ncv=ncv)
+        nb.mu = SuperfluidDynamics.bdg_mu(nb)
+        SuperfluidDynamics.timeStep!(nb)
+        return nb.ωs, f
+    end
+
+    # (a) β = 50, 24²: Kohn must survive at its analytic value. ncv raised
+    # explicitly: with the automatic size Arpack stalls on this small operator
+    # (measured: XYAUPD 'all possible eigenvalues of OP has been found').
+    ωs, _ = bdg_modes(24, 10.0, 50.0; nev=6, ncv=60)
+    @test !isempty(ωs) && all(ω -> ω > 1e-3, ωs)      # no zero mode leaked
+    kohn = argmin(abs.(ωs .- 1.0))
+    @test abs(ωs[kohn] - 1.0) < 5e-2                   # Kohn survived the filter
+
+    # (b) vortex, β = 200, 24²: zero mode at ω=0.002 removed structurally.
+    # At 24² the lowest KEPT mode is ω=0.30 (a vortex edge mode — the 32² dense
+    # spectrum has its first physical mode at 1.01; the coarse grid brings one
+    # down). What the filter must guarantee at ANY size: nothing at the zero
+    # mode's frequency survives, and low physical modes do.
+    ωv, _ = bdg_modes(24, 10.0, 200.0; vortex=true, nev=6, ncv=60)
+    @test !isempty(ωv) && all(ω -> ω > 0.05, ωv)       # zero mode (ω=0.002) gone
+    @test count(ω -> ω < 2.0, ωv) >= 2                 # physical modes kept
+end
+
+# ==========================================================================
 # Bogoliubov-de Gennes (matrix-free eigensolver)
 # ==========================================================================
 @testset "BdG anisotropic 2D harmonic oscillator: analytic spectrum (2D)" begin

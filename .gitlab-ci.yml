@@ -84,6 +84,28 @@ test:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
+# [compat] announces julia = "1.10": the floor must be tested, not assumed.
+# The baked image carries 1.12 only, so this job downloads the official 1.10
+# channel binary and resolves dependencies for it (the committed Manifest is
+# resolved under 1.12; deleting it lets Pkg pick versions whose own julia
+# compat admits 1.10 — which is what a 1.10 user gets from the registry).
+test-1.10:
+  image: $CI_REGISTRY_IMAGE/ci:sha-$CI_COMMIT_SHORT_SHA
+  stage: test
+  needs: [build-image]
+  variables:
+    J110: /opt/julia-1.10
+  before_script:
+    - git config --global --add safe.directory "$(pwd)"
+  script:
+    - test -x "$J110/bin/julia" || (wget -q https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.9-linux-x86_64.tar.gz && tar -xzf julia-1.10.9-linux-x86_64.tar.gz -C /opt/ && ln -s /opt/julia-1.10.9 "$J110")
+    - rm -f Manifest.toml
+    - "$J110/bin/julia" --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
+    - "$J110/bin/julia" --project=. test/runtests.jl
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
 pages:
   image: $CI_REGISTRY_IMAGE/ci:sha-$CI_COMMIT_SHORT_SHA
   stage: deploy

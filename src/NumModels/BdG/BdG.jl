@@ -396,19 +396,24 @@ function _timeStep_distributed!(n::NumModelBdG)
 end
 
 """
-    bdg_output(n, ωs, ev; zero_ov=0.15)
+    bdg_output(n, ωs, ev; zero_ov=0.9)
 
 Select and normalize the physical BdG modes from the raw eigenvectors.
 `ev` holds one 2N eigenvector per column (`u` in the first half, `v` in the
 second). A column is kept when it belongs to the ω > 0 branch, which is
 detected by a positive symplectic norm s = ‖u‖² - ‖v‖² (the ω < 0 partner has
 s < 0). The ω = 0 mode (u, v) = (ψ, ψ*) is dropped by its *structure*, not its
-frequency: it is (dominantly) the vector (ψ, ψ*), so any column whose overlap
-with that vector exceeds `zero_ov` is rejected. Using overlap (rather than
-|ω| ≈ 0) makes this robust when the supplied stationary state is not an exact
-eigenstate of the discrete operator — in that case the zero mode appears as a
-small-residual pair at ω ≈ ±ε and its frequency is not reliably zero. Kept
-modes are renormalized to s = 1 and returned sorted by increasing ω.
+frequency: it is the ONLY mode whose u AND v components are simultaneously
+collinear with ψ, so a column is rejected when min(ov_u, ov_v) ≥ `zero_ov`,
+where ov_u = |⟨ψ,u⟩|/‖u‖‖ψ‖ and ov_v = |⟨ψ*,v⟩|/‖v‖‖ψ‖. Measured on dense
+spectra (β = 50..3000, isotropic/anisotropic traps, vortex state): the zero
+mode has min(ov_u, ov_v) = 1.0 everywhere, the largest physical-mode overlap
+anywhere in the sweep is 0.74. Using overlap (rather than |ω| ≈ 0) makes this
+robust when the supplied stationary state is not an exact eigenstate of the
+discrete operator — in that case the zero mode appears as a small-residual
+pair at ω ≈ ±ε (measured: ω = 0.002 on a vortex state) and its frequency is
+not reliably zero. Kept modes are renormalized to s = 1 and returned sorted
+by increasing ω.
 """
 function bdg_output(n::NumModelBdG, ωs, ev; zero_ov=0.9, ψ=parent(n.f.ϕ))
     # `ψ` is the stationary state matching the layout of `ev`: the local data on one
@@ -428,16 +433,23 @@ function bdg_output(n::NumModelBdG, ωs, ev; zero_ov=0.9, ψ=parent(n.f.ϕ))
         un, vn = sqrt(sum(abs2, col[1:N])), sqrt(sum(abs2, col[N+1:2N]))
         (un > 0 && vn > 0) || continue
         # Structural zero-mode test: the gauge mode is (u, v) ∝ (ψ, ψ*), i.e.
-        # BOTH components are parallel to ψ. Measured (β=200, dense spectrum):
-        # the zero mode gives ov_u = ov_v = 1.0, while the breathing mode —
-        # the physical mode most collinear with ψ — reaches only ov_u = 0.43,
-        # ov_v = 0.68. An earlier version thresholded the overlap of the
-        # *stacked* vector with (ψ, ψ*); at 0.15 that silently deleted the
-        # breathing mode (ov = 0.52), which is an exact ω = 2 eigenvalue
-        # (hidden symmetry) and the package's own reference case.
+        # BOTH components are parallel to ψ — and only the gauge mode has both
+        # parallel at once. Measured over a dense-spectrum sweep (β = 50..3000,
+        # isotropic and anisotropic traps, singly-quantized vortex state): the
+        # zero mode gives min(ov_u, ov_v) = 1.0 in every configuration, while
+        # the largest physical-mode overlap anywhere in the sweep is 0,74 (at
+        # β = 50; it grows as β decreases). Excluding on max(ov_u, ov_v) would
+        # also work on this sweep but is strictly weaker: a physical mode could
+        # have one component along ψ without being the gauge mode. On the
+        # vortex state the zero mode sits at ω = 0,002, so any frequency-based
+        # filter is fragile; the test must stay structural. An earlier version
+        # thresholded the overlap of the *stacked* vector with (ψ, ψ*); at 0.15
+        # that silently deleted the breathing mode (ov = 0.52), which is an
+        # exact ω = 2 eigenvalue (hidden symmetry) and the package's own
+        # reference case.
         ov_u = abs(sum(conj.(vec(ψp)) .* col[1:N])) / (un * ψn)
         ov_v = abs(sum(vec(ψp) .* col[N+1:2N])) / (vn * ψn)
-        max(ov_u, ov_v) < zero_ov || continue             # zero mode
+        min(ov_u, ov_v) < zero_ov || continue             # zero mode
         u = reshape(col[1:N], size(ψp))
         v = conj.(reshape(col[N+1:2N], size(ψp)))
         push!(w, ωs[j])

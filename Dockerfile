@@ -13,6 +13,12 @@
 FROM ubuntu:26.04
 
 ARG JULIA_VERSION=1.12.7
+# Floor version advertised in [compat]; baked so the test-1.10 job does not
+# depend on julialang-s3 reachability at job time (reviewer point: behind a
+# proxy the download would fail for reasons unrelated to the code). 1.10.12 =
+# the patch level where the suite is green (1.10.9 fails GPUCompiler
+# precompilation, verified in the CI trace).
+ARG JULIA_FLOOR_VERSION=1.10.12
 
 RUN apt-get update -qq \
     && apt-get install -y --no-install-recommends \
@@ -29,6 +35,11 @@ RUN wget -q https://julialang-s3.julialang.org/bin/linux/x64/1.12/julia-${JULIA_
     && tar -xzf julia-${JULIA_VERSION}-linux-x86_64.tar.gz -C /opt/ \
     && ln -s /opt/julia-${JULIA_VERSION}/bin/julia /usr/local/bin/julia \
     && rm julia-${JULIA_VERSION}-linux-x86_64.tar.gz
+
+RUN wget -q https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-${JULIA_FLOOR_VERSION}-linux-x86_64.tar.gz \
+    && tar -xzf julia-${JULIA_FLOOR_VERSION}-linux-x86_64.tar.gz -C /opt/ \
+    && ln -s /opt/julia-${JULIA_FLOOR_VERSION} /opt/julia-1.10 \
+    && rm julia-${JULIA_FLOOR_VERSION}-linux-x86_64.tar.gz
 
 # --- main environment ---------------------------------------------------------
 # Instantiate from the committed Manifest (deterministic) and build the

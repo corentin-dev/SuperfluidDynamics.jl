@@ -98,7 +98,11 @@ test-1.10:
   before_script:
     - git config --global --add safe.directory "$(pwd)"
   script:
-    - test -x "$J110/bin/julia" || (wget -q https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.9-linux-x86_64.tar.gz && tar -xzf julia-1.10.9-linux-x86_64.tar.gz -C /opt/ && ln -s /opt/julia-1.10.9 "$J110")
+    # 1.10.12 = the patch level the measurement machine runs and where the
+    # suite is green (sd-test1.10-6460); 1.10.9 carries a code-loading bug
+    # that breaks GPUCompiler precompilation (CI trace: "Missing Julia object
+    # for global").
+    - test -x "$J110/bin/julia" || (wget -q https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.12-linux-x86_64.tar.gz && tar -xzf julia-1.10.12-linux-x86_64.tar.gz -C /opt/ && ln -s /opt/julia-1.10.12 "$J110")
     - rm -f Manifest.toml
     - $J110/bin/julia --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
     - $J110/bin/julia --project=. test/runtests.jl

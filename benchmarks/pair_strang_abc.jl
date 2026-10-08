@@ -1,15 +1,7 @@
-# Paired cost measurement: real-time GP evolution on the ABC box, OUR solver vs
-# the GPS (Fortran) code. This is the counterpart of the GPS input written for
-# `examples/3D/quad`-style runs: model 42 (TS2_ADI = Strang splitting) on
-#   box (0,2pi)^3, n=128^3, beta=40, coeff_delta=-0.05 (alpha=0.05),
-#   potential npot=9 (ABC u_adv + |u_adv|^2/(4|coeff_delta|)), IC initcondition=9
-#   (ABC, eq. (82)-(83)), deltat=1e-3, 100 steps.
-#
-# Here: NumModelSplit2 (Lie? no — Strang), same box/grid/parameters, dt=1e-3,
-# same number of steps, potential V = |u_adv|^2/(4 alpha) so the WORK PER STEP
-# matches (the linear and nonlinear operators are the same ones).
-#
-# Both sides time the step loop only. Print is one line, machine readable.
+# Paired cost measurement: real-time GP on the ABC box, our NumModelSplit2 vs
+# the GPS Fortran code running its Strang splitting (model 42). Same box, grid,
+# beta, dt and step count, and the same potential V = |u_adv|^2/(4 alpha) so the
+# work per step is comparable. Both sides time the step loop only.
 #
 #   mpiexec -n 8 julia --project=. -t1 -O3 benchmarks/pair_strang_abc.jl
 #

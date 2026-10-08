@@ -1,13 +1,10 @@
 # Strong-scaling benchmark: ARGLE relaxation (NumModelExternalVelocity), 3D,
-# MPI pencil decomposition — the state-preparation stage of the Kobayashi et al.
-# (CPC 258, 2021) ABC benchmark, i.e. the part our CPU/GPU cost comparison had
-# never measured (scalability_gp.jl times Split2, the real-time stage).
+# MPI pencil decomposition — the state-preparation stage of the Kobayashi ABC
+# benchmark (the real-time stage is timed by scalability_gp.jl).
 #
-# Same configuration as the supplier's harness (benchmarks-bundle-v3):
-# ABC velocity (0.9, 1.0, 1.1)/sqrt(3), alpha=0.05, beta=40, box (0,2pi)^3,
-# dtau=0.004. Timing is a pseudo-step rate; core_s_per_point_iter is reported so
-# it can be put against the paper's Table (ABC_aIT, 128^3: 1.9195e-06
-# core*s/point/iteration on 56 ranks).
+# Configuration: ABC velocity (0.9, 1.0, 1.1)/sqrt(3), alpha=0.05, beta=40,
+# box (0,2pi)^3, dtau=0.004. Reports a pseudo-step rate plus
+# core_s_per_point_iter for comparison against published rates.
 #
 # Run on one node:
 #   mpiexec -n 8 julia --project=. -t1 -O3 benchmarks/scalability_argle.jl

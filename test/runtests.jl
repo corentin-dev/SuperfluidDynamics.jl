@@ -1412,18 +1412,13 @@ end
 # BdG zero-mode filter: structural, calibrated over a parameter sweep
 # ==========================================================================
 @testset "BdG zero-mode filter: sweep calibration (small cases)" begin
-    # The filter drops a column when BOTH overlaps with ψ exceed zero_ov:
-    # ov_u = |<psi,u>|/||u|| ||psi||, ov_v = |<psi*,v>|/||v|| ||psi||.
-    # Dense-spectrum sweep (beta = 50..3000, anisotropic trap, vortex state;
-    # runs repo scripts/bdg_filter_sweep.jl): the zero mode has
-    # min(ov_u, ov_v) = 1.0 everywhere; the largest PHYSICAL overlap anywhere
-    # in the sweep is 0.74 (beta=50, and it grows as beta decreases). These two
-    # small cases pin both ends of that calibration through the public path:
-    # (a) weakly interacting trap: Kohn (omega=1, ov ~ 0.74) SURVIVES the filter
-    #     and the zero mode is gone; (b) vortex state: the zero mode sits at
-    #     omega = 0.002 (frequency filters would misjudge it) and is removed
-    #     structurally, while low positive modes remain.
-    # 24² keeps this fast; the calibration itself is a sweep, not a point.
+    # Pins both ends of the zero_ov threshold through the public path, in cases
+    # cheap enough to run in the suite (24²):
+    # (a) weakly interacting trap — the Kohn mode, a PHYSICAL mode with large
+    #     overlap with ψ, survives the filter while the zero mode is dropped;
+    # (b) vortex state — the zero mode sits at a small NONZERO frequency, so a
+    #     frequency-based filter would keep it, and it is dropped structurally.
+    # The threshold value itself is calibrated on a sweep, not on these points.
     function bdg_modes(N, L, β; γx=1.0, γy=1.0, vortex=false, nev=8, ncv=0)
         g = Grid((N, N), ((-L, L), (-L, L)))
         f = Field(g, ComplexField())

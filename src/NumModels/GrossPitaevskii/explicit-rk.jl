@@ -1,5 +1,5 @@
 """
-    NumModelGPRK(f, param, Δt, niter, freqbckp; stepper="RK4")
+    NumModelGPRK(f, param, Δt, niter, freqbckp; stepper="RK4", filter=:product)
 
 Explicit Runge-Kutta integrator for the time-dependent Gross-Pitaevskii
 equation, in 2D and 3D:
@@ -26,9 +26,16 @@ which is why the implicit / splitting schemes are preferred for long,
 high-resolution GP evolutions. `NumModelGPRK` is intended for benchmarks,
 short runs, and as an accuracy reference for the implicit schemes.
 
-As in the reference, the solution is 2/3-rule dealiased after every step
-(`dealias`, default `true`): without it, the explicit stages amplify the
-high-frequency round-off of the purely dispersive GP spectrum.
+`filter` places the 2/3-rule filter, which zeroes the modes above
+`(2/3)·k_max`:
+
+- `:product` — filter the nonlinear term `(V + β|ϕ|²)ϕ` inside every stage, as
+  the NS, HVBK and NSGP models filter their nonlinear terms. Keeps the temporal
+  order of `stepper`. Default.
+- `:solution` — filter the state after each step, as reference GPS does with
+  `GP%filter` (off there by default). Splitting a projection this way caps the
+  observed temporal order at 1, whatever `stepper` is.
+- `:none` — no filter.
 """
 mutable struct NumModelGPRK{F,P,Plan} <: AbstractNumModel{F,P,Plan}
     f::F
@@ -40,26 +47,30 @@ mutable struct NumModelGPRK{F,P,Plan} <: AbstractNumModel{F,P,Plan}
     "time-stepping scheme: \"RK1\", \"RK2\" or \"RK4\"."
     stepper::String
     plan::Plan
-    "2/3-rule dealiasing bound (GLOBAL, rank-independent), cached at construction"
+    "2/3-rule filter bound (GLOBAL, rank-independent), cached at construction"
     " — recomputing it per step would be a device reduction + sync on the GPU."
     ξmax::Float64
+    "where the 2/3-rule filter is applied: `:product`, `:solution` or `:none`."
+    filter::Symbol
     writers::AbstractWriterCollection{F}
     "RK stage / derivative scratch (same layout as f.ϕ)."
     k1::PencilArray
     k2::PencilArray
     k3::PencilArray
     k4::PencilArray
-    s::PencilArray
-    "spectral scratch (last-pencil layout) for the solution dealiasing."
+    "physical-space scratch for the filtered nonlinear term (same layout as f.ϕ)."
+    nl::PencilArray
+    "spectral scratch (last-pencil layout) for filtering."
     shat::PencilArray
-    "apply the 2/3-rule dealiasing to the solution after each step (default)."
-    dealias::Bool
+    s::PencilArray
 end
 
 function NumModelGPRK(f::AbstractField,
                       param::AbstractParameters,
                       Δt::Real, niter::Integer, freqbckp::Integer;
-                      stepper::String="RK4")
+                      stepper::String="RK4", filter::Symbol=:product)
+    filter in (:product, :solution, :none) ||
+        throw(ArgumentError("NumModelGPRK filter $(filter) unknown (use :product, :solution or :none)."))
     gf = GradientField(f; rotation=true)
     plan = Plan(f)
     writer = WriterVTK(f); saver = WriterSave(f)
@@ -68,13 +79,14 @@ function NumModelGPRK(f::AbstractField,
     npen = getfield(SuperfluidDynamics, :last_pencil)(plan)
     shat = PencilArray{eltype(f.ϕ)}(undef, npen)
     return NumModelGPRK{typeof(f),typeof(param),typeof(plan)}(
-        f, gf, param, Δt, niter, freqbckp, stepper, plan, SuperfluidDynamics.ξmax_global(plan), writers,
-        bfun(), bfun(), bfun(), bfun(), bfun(), shat, true)
+        f, gf, param, Δt, niter, freqbckp, stepper, plan,
+        SuperfluidDynamics.ξmax_global(plan), filter, writers,
+        bfun(), bfun(), bfun(), bfun(), bfun(), shat, bfun())
 end
 
 function Base.show(io::IO, n::NumModelGPRK)
     return print(io,
-                 "Gross-Pitaevskii explicit $(n.stepper)\n",
+                 "Gross-Pitaevskii explicit $(n.stepper) (2/3 filter: $(n.filter))\n",
                  "  ├───────  time step: $(n.Δt)\n",
                  "  └──────────── solve: number of iterations $(n.niter), backup frequency $(n.freqbckp)")
 end
@@ -87,13 +99,45 @@ Right-hand side of the time-dependent GP equation, ``∂tψ = F(ψ)``:
     F(ψ) = 1im [ ( −coeffΔ ∇² + iΩ L_z ) ψ − ( V + β |ψ|² ) ψ ]
 
 computed with the package spectral operators (`lapRot`), written into `out`
-(same layout as `ψ`).
+(same layout as `ψ`). With `filter = :product` the nonlinear term is
+2/3-filtered before being subtracted.
 """
 function gp_rhs!(n::NumModelGPRK, out, ψ)
     lin = lapRot(n, ψ)                          # (−coeffΔ ∇² + iΩ L_z) ψ, spectral
-    V, β = n.param.pot.V, n.param.β
-    @. out = 1im * (lin - (V + β * abs2(ψ)) * ψ)
+    if n.filter === :product
+        _gp_nl!(n, n.nl, ψ)
+        @. out = 1im * (lin - n.nl)
+    else
+        V, β = n.param.pot.V, n.param.β
+        @. out = 1im * (lin - (V + β * abs2(ψ)) * ψ)
+    end
     return out
+end
+
+"""
+    _gp_nl!(n, out, ψ)
+
+Nonlinear term ``(V + β|ψ|²)ψ``, 2/3-filtered: built in physical space, filtered
+in the spectral domain, returned in the layout of `ψ`. `out` must not alias `ψ`.
+"""
+function _gp_nl!(n::NumModelGPRK, out, ψ)
+    V, β = n.param.pot.V, n.param.β
+    @. out = (V + β * abs2(ψ)) * ψ
+    mul_all!(n.shat, n.plan, out)
+    _gp_filter!(n, n.shat)
+    ldiv_all!(out, n.plan, n.shat)
+    return out
+end
+
+"""
+    _gp_filter!(n, ϕ̂)
+
+Zero the modes of the spectral field `ϕ̂` above the 2/3-rule bound, in place
+(same threshold as `dealias!` / `dealias2!` / `_dealias_scalar!`).
+"""
+function _gp_filter!(n::NumModelGPRK, ϕ̂)
+    _dealias_scalar!(ϕ̂, getfield(SuperfluidDynamics, :spectral_grid)(n.plan), n.ξmax)
+    return nothing
 end
 
 function timeStep!(n::NumModelGPRK)
@@ -119,31 +163,10 @@ function timeStep!(n::NumModelGPRK)
     else
         throw(ArgumentError("NumModelGPRK stepper \"$(n.stepper)\" unknown (use \"RK1\", \"RK2\" or \"RK4\")."))
     end
-    # 2/3-rule dealiasing of the solution (as in the reference GP_RK4):
-    # removes the high-frequency round-off that explicit RK would otherwise amplify.
-    if n.dealias
-        _gp_dealias!(n)
+    if n.filter === :solution
+        mul_all!(n.shat, n.plan, n.f.ϕ)
+        _gp_filter!(n, n.shat)
+        ldiv_all!(n.f.ϕ, n.plan, n.shat)
     end
     return 0
-end
-
-"""
-    _gp_dealias!(n)
-
-2/3-rule dealiasing of the model wavefunction: FFT → zero the modes with
-``|k|² > (4/9) min(|k|_max)²`` → IFFT. Applied to the solution after each
-explicit step to control the high-frequency round-off growth that explicit
-Runge-Kutta methods exhibit on the dispersive Gross-Pitaevskii spectrum.
-"""
-function _gp_dealias!(n::NumModelGPRK)
-    gridξ = getfield(SuperfluidDynamics, :spectral_grid)(n.plan)
-    mul_all!(n.shat, n.plan, n.f.ϕ)
-    ξmax = n.ξmax
-    if ndims(gridξ) == 3
-        @. n.shat *= (gridξ.x^2 + gridξ.y^2 + gridξ.z^2) < ξmax
-    else
-        @. n.shat *= (gridξ.x^2 + gridξ.y^2) < ξmax
-    end
-    ldiv_all!(n.f.ϕ, n.plan, n.shat)
-    return nothing
 end

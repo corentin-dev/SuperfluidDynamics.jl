@@ -575,6 +575,40 @@ end
     @test mass_rel("RK4", 0.004, 0.2, 2.0) < 1e-7
 end
 
+# Temporal order for each 2/3-filter placement. Only β > 0 separates them: with
+# β = V = Ω = 0 the term to filter is zero, so no placement can show up.
+@testset "GP explicit RK: 2/3-filter placement and nonlinear temporal order (2D)" begin
+    grid = Grid((32, 32), ((-2π, 2π), (-2π, 2π)))
+    T = 0.1
+    function state(filter, nsteps)
+        field = Field(grid, ComplexField())
+        X = reshape(vec(field.x), :, 1); Y = reshape(vec(field.y), 1, :)
+        @. field.ϕ = (1 + 0.3 * cos(2X) + 0.2 * sin(3Y)) * exp(1im * X)
+        parent(field.ϕ) ./= sqrt(sum(abs2, parent(field.ϕ)) / length(parent(field.ϕ)))
+        param = GrossPitaevskiiParameters(coeffΔ=-0.5, β=20.0, Ω=0.0, pot=PotentialZero(field))
+        n = NumModelGPRK(field, param, T / nsteps, nsteps, 1; filter=filter)
+        for _ in 1:nsteps
+            SuperfluidDynamics.timeStep!(n)
+        end
+        return copy(parent(field.ϕ))
+    end
+    dist(a, b) = sqrt(sum(abs2, a .- b) / sum(abs2, b))
+    function order(filter)
+        s = [state(filter, k) for k in (24, 48, 96)]
+        return log2(dist(s[1], s[2]) / dist(s[2], s[3])), s[end]
+    end
+    op, sp = order(:product)
+    os, ss = order(:solution)
+    @test 3.8 < op < 4.2
+    @test os < 2.0
+    @test dist(sp, ss) > 1e-4          # the two placements really differ: guards a vacuous pass
+    fbad = Field(grid, ComplexField())
+    @test_throws ArgumentError NumModelGPRK(fbad,
+                                            GrossPitaevskiiParameters(coeffΔ=-0.5, β=20.0,
+                                                                      pot=PotentialZero(fbad)),
+                                            1e-3, 1, 1; filter=:kmax)
+end
+
 # Imaginary-time solvers: in the strong-interaction (Thomas-Fermi) regime, the
 # ground state of the 2D harmonic trap V = (x² + y²)/2 is analytic: the TF
 # chemical potential is μ_TF = √(β/π) and the TF energy E_TF = 2 μ_TF / 3

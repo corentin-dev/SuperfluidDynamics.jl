@@ -12,13 +12,13 @@
 # seed, so every rank count starts from the identical field), a short NS or GP
 # evolution, and the globally reduced energy as observable. Run at 1, 2, 4, 8
 # ranks: the rank-count-to-rank-count drift of E(t) is the measurement.
-# DEALIAS=0 removes the suspect mechanism and must be drift-free to round-off:
-# it separates "the bound is rank-dependent" from "not bit-reproducible under
-# MPI" (a legitimate, harmless cause of drift).
+# RANKINV_FILTER=none removes the suspect mechanism and must be drift-free to
+# round-off: it separates "the bound is rank-dependent" from "not bit-reproducible
+# under MPI" (a legitimate, harmless cause of drift).
 #
-#   RANKINV_MODEL=ns RANKINV_N=96 RANKINV_STEPS=30 RANKINV_DEALIAS=1 \
+#   RANKINV_MODEL=ns RANKINV_N=96 RANKINV_STEPS=30 RANKINV_FILTER=product \
 #     mpiexec -n R julia --project=. -t1 -O3 benchmarks/scalability_rankinv.jl
-# prints per run: rankinv: model=ns ranks=R N=96 dealias=1 E=...
+# prints per run: rankinv: model=ns ranks=R N=96 filter=product E=...
 
 using MPI
 MPI.Init()
@@ -29,7 +29,7 @@ using SuperfluidDynamics
 const MODEL = get(ENV, "RANKINV_MODEL", "ns")
 const N = parse(Int, get(ENV, "RANKINV_N", "96"))
 const STEPS = parse(Int, get(ENV, "RANKINV_STEPS", "30"))
-const DEALIAS = parse(Int, get(ENV, "RANKINV_DEALIAS", "1")) == 1
+const FILTER = Symbol(get(ENV, "RANKINV_FILTER", "product"))
 # Measured limit of the PROBE (not of the package): inviscid NS on this
 # broadband state at N=96 with Δt=0.01 goes NaN before step 30 — on the
 # pre-fix AND the post-fix code (checked against b8a32ba). Use RANKINV_N=48
@@ -88,18 +88,15 @@ elseif MODEL == "gp"
     # over the few steps of the probe.
     param = GrossPitaevskiiParameters(; coeffΔ=-0.5, β=1.0,
                                       pot=PotentialZero(field))
-    NumModelGPRK(field, param, 1e-4, 1, 1)
+    NumModelGPRK(field, param, 1e-4, 1, 1; filter=FILTER)
 else
     error("RANKINV_MODEL must be ns or gp")
 end
-if !DEALIAS
-    # Only the explicit GP solver carries the switch (the NS RK4 dealiases
-    # unconditionally); GP with dealias=0 is therefore the round-off baseline:
-    # drift there = benign non-bit-reproducibility, drift that appears only
-    # with dealias=1 = the rank-local cutoff bound.
-    isdefined(model, :dealias) || error("this model has no `dealias` flag " *
-                                        "(only RANKINV_MODEL=gp supports DEALIAS=0)")
-    model.dealias = false
+# NS dealiases its nonlinear term unconditionally, so only the explicit GP solver
+# can be run without the filter: GP with filter=:none is the round-off baseline.
+if FILTER !== :product && !isdefined(model, :filter)
+    error("RANKINV_FILTER other than :product needs a model with a `filter` " *
+          "field (only RANKINV_MODEL=gp supports it)")
 end
 
 function observable(m)
@@ -125,8 +122,8 @@ end
 E4 = observable(model)
 
 if rank == 0
-    @printf("rankinv: model=%s ranks=%d N=%d dealias=%d E0=%.14e E=%.14e\n",
-            MODEL, nranks, N, DEALIAS, E0, E4)
+    @printf("rankinv: model=%s ranks=%d N=%d filter=%s E0=%.14e E=%.14e\n",
+            MODEL, nranks, N, FILTER, E0, E4)
     flush(stdout)
 end
 MPI.Barrier(comm)

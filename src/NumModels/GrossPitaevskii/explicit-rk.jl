@@ -32,9 +32,17 @@ short runs, and as an accuracy reference for the implicit schemes.
 - `:product` — filter the nonlinear term `(V + β|ϕ|²)ϕ` inside every stage, as
   the NS, HVBK and NSGP models filter their nonlinear terms. Keeps the temporal
   order of `stepper`. Default.
-- `:solution` — filter the state after each step, as reference GPS does with
-  `GP%filter` (off there by default). Splitting a projection this way caps the
-  observed temporal order at 1, whatever `stepper` is.
+- `:solution` — filter the state after each step. Splitting a projection this way
+  caps the observed temporal order at 1, whatever `stepper` is.
+
+Reference GPS applies **both**, and more than either option here, when `GP%filter = 1`
+(off by default — `integer :: filter_GP = 0` in `GPS_var_def.f90`): in
+`GPS_model_unstationary.f90`, `calc_nlk_Lap_GP` filters its whole output
+`dtGP*uim*((cormass1 + α*lap)φ + nl)`, i.e. the kinetic term too, not only the
+nonlinear product (line ~720/802), and `GP_RK4` then filters the state `phi_tilde`
+after the RK4 combination (line ~892). No single option here reproduces that; `:product`
+matches the *intent* (dealias the product) while keeping the order of the scheme, and is
+the default for that reason, not because GPS does it.
 - `:none` — no filter.
 """
 mutable struct NumModelGPRK{F,P,Plan} <: AbstractNumModel{F,P,Plan}

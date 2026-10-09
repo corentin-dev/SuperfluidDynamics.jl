@@ -1,20 +1,18 @@
 # Rank-invariance probe: does the number of MPI ranks change the physics?
 #
-# Why: the 2/3-rule dealiasing bound ξmax = (4/9)·min_d max_d'|ξ_d'|² is
+# Mechanism under test: the 2/3-rule dealiasing bound ξmax = (4/9)·min_d max_d'|ξ_d'|²
 # computed over the LOCAL pencil grid. Dealiasing happens on the last pencil,
 # where two dimensions are distributed — so a rank may not hold the largest
 # wavenumber of every direction, its bound can come out lower than the global
-# one, and it then zeroes modes its peers keep. This bench does not argue, it
-# measures.
+# one, and it then zeroes modes its peers keep.
 #
-# Protocol: a broadband initial state (six plane-wave bands at N/3…2N/3 — right
-# where the 2/3-rule boundary sits — with amplitudes/phases drawn from a fixed
-# seed, so every rank count starts from the identical field), a short NS or GP
-# evolution, and the globally reduced energy as observable. Run at 1, 2, 4, 8
-# ranks: the rank-count-to-rank-count drift of E(t) is the measurement.
-# RANKINV_FILTER=none removes the suspect mechanism and must be drift-free to
-# round-off: it separates "the bound is rank-dependent" from "not bit-reproducible
-# under MPI" (a legitimate, harmless cause of drift).
+# Protocol: a broadband initial state (six plane-wave bands with amplitudes and
+# phases drawn from a fixed seed, so every rank count starts from the identical
+# field), a short NS or GP evolution, and the globally reduced energy as
+# observable. Run at 1, 2, 4, 8 ranks: the rank-count-to-rank-count drift of E(t)
+# is the measurement. RANKINV_FILTER=none removes the mechanism under test and
+# must be drift-free to round-off: it separates "the bound is rank-dependent"
+# from "not bit-reproducible under MPI" (a harmless cause of drift).
 #
 #   RANKINV_MODEL=ns RANKINV_N=96 RANKINV_STEPS=30 RANKINV_FILTER=product \
 #     mpiexec -n R julia --project=. -t1 -O3 benchmarks/scalability_rankinv.jl
@@ -30,11 +28,9 @@ const MODEL = get(ENV, "RANKINV_MODEL", "ns")
 const N = parse(Int, get(ENV, "RANKINV_N", "96"))
 const STEPS = parse(Int, get(ENV, "RANKINV_STEPS", "30"))
 const FILTER = Symbol(get(ENV, "RANKINV_FILTER", "product"))
-# Measured limit of the PROBE (not of the package): inviscid NS on this
-# broadband state at N=96 with Δt=0.01 goes NaN before step 30 — on the
-# pre-fix AND the post-fix code (checked against b8a32ba). Use RANKINV_N=48
-# for the rank-count comparison (that is also where the 1.9e-3 drift was
-# originally measured); N=96 needs a smaller Δt if one wants stable runs there.
+# Stability limit OF THE PROBE: inviscid NS on this broadband state at N=96 with
+# Δt=0.01 goes NaN before step 30. Use RANKINV_N=48 for the rank-count
+# comparison, or lower Δt at N=96.
 
 comm = MPI.COMM_WORLD
 rank = MPI.Comm_rank(comm)
@@ -53,21 +49,13 @@ rng = MersenneTwister(12345)
 # below the global (4/9)(N/2)². Modes with 0.20N < |k| < 0.33N are therefore
 # kept by some ranks and deleted by others — if the bound is rank-local.
 #
-# MEASURED, and it does not hold as written: the bound compares the SUM
-# |ξ|² = ξx²+ξy²+ξz² against ξmax, so a band chosen per axis lands above the
-# global bound once summed. For this box (-2π,2π)³ at N=48 the seed puts 100 %
-# of its energy at |ξ|² = 144…241 against ξmax = (4/9)·12² = 64, i.e. every
-# seeded mode is deleted by the GLOBAL mask (mask alone, no timeStep: 1.8e-29
-# of the energy survives; single plane waves give 1.000000 kept at |ξ|²=36 and
-# 0.000000 at |ξ|²=144, so the filter is exact on both sides). Consequence for
-# the GP branch: with `filter=:solution` the state is annihilated whatever the
-# rank count, so "identical across ranks" there is TRUE TRIVIALLY and proves
-# nothing about rank-dependence. A discriminating seed needs |ξ|² < ξmax on the
-# sum (e.g. k=(4,4,2) at N=48, |ξ|²=36) while still exceeding an edge rank's
-# local bound. Not changed here: the archived numbers of this branch were
-# produced with this seed.
-# (The NS projection removes the divergence at the first step; what matters is
-# the spectral support, not the polarisation.)
+# Read the GP `filter=:solution` rows with care: the bound compares the SUM
+# |ξ|² = ξx²+ξy²+ξz², and with this box and these bands the whole seed sits above
+# the GLOBAL bound, so the first projection annihilates the state at any rank
+# count — the ranks then agree trivially. A discriminating seed needs
+# |ξ|² < ξmax on the sum while still exceeding an edge rank's local bound.
+# (The NS projection removes any divergence at the first step: what the probe
+# measures is the spectral support of the seed, not its polarisation.)
 fracs = [(0.16, 0.16, 0.08), (0.25, 0.08, 0.04), (0.04, 0.25, 0.08),
          (0.08, 0.04, 0.25), (0.20, 0.20, 0.08), (0.30, 0.12, 0.06)]
 # Field allocates undef data: zero the evolving arrays before accumulating.

@@ -250,15 +250,6 @@ end
 Run the Bogoliubov-de Gennes eigensolve on the stationary state stored in
 `n.f.ϕ`. Fills `n.mu`, `n.ωs`, `n.us` and `n.vs` and returns 0 for
 compatibility with the standard solver loop.
-
-The full 2N×2N operator is applied matrix-free (`_bdg_apply!`) through an
-`Arpack.eigs` Krylov solve with `which = :SM` (smallest |ω|). `2·nev + 2`
-eigenvalues are requested so that, in addition to the desired lowest modes,
-the ω = 0 modes and at least one member of each ω ↔ −ω pair are captured:
-the zero eigenspace is two-dimensional when `β = 0` (spanned by
-`(ψ, ψ*)` and `(ψ, −ψ*)`), so two slots are reserved for it.
-`bdg_output` then keeps the `n.nev` lowest positive-frequency physical modes
-(the positive-symplectic-norm member of each pair, minus the zero mode).
 """
 function timeStep!(n::NumModelBdG)
     n.mu = bdg_mu(n)
@@ -273,6 +264,8 @@ function timeStep!(n::NumModelBdG)
         _bdg_apply!(n, out, x)
     end
 
+    # +2: the zero eigenspace is two-dimensional when β = 0 ((ψ,ψ*) and (ψ,−ψ*)),
+    # and the ω ↔ −ω symmetry means only one member of each pair is wanted.
     nev2 = 2 * n.nev + 2
     ncv = n.ncv > 0 ? n.ncv : min(max(nev2 + 5, 20), 2N - 2)
     ew, ev = Arpack.eigs(lmap; nev=nev2, which=n.which,
@@ -287,28 +280,6 @@ end
 # ---------------------------------------------------------------------------
 # distributed (MPI) eigensolve
 # ---------------------------------------------------------------------------
-#
-# Arpack is a serial library. Run independently on each rank it would build a
-# different Krylov basis from the rank-local data (local inner products, local
-# convergence tests) while the operator itself is a collective: the ranks drift
-# apart and block in different collectives. Instead, rank 0 alone drives Arpack
-# on the *global* 2N vector, and every other rank serves the mat-vec:
-#
-#     rank 0:  Bcast(command = apply); Bcast(x); scatter x; apply; gather y
-#     others:  loop { Bcast(command); if stop -> break; Bcast(x); scatter; apply; gather }
-#
-# so the control flow is decided in one place by construction (no reliance on
-# bit-identical floating point across ranks). Memory: the global vectors live on
-# rank 0 only. The cost is an O(N_global) gather per mat-vec, which is fine for
-# the few hundred mat-vecs of a BdG solve but makes this path a correctness
-# feature, not a scalable one. A fully distributed Krylov solver would require
-# global inner products (e.g. KrylovKit with PencilArray-aware vectors).
-#
-# The modes `n.us`/`n.vs` are returned as *global* arrays on every rank.
-#
-# Assumes the pencil has no index permutation (always the case for `Field`),
-# i.e. memory order == logical order, and CPU arrays (Arpack is CPU-only).
-
 function _bdg_replicate(x::PencilArray)
     comm = PencilArrays.get_comm(x)
     g = PencilArrays.gather(x, 0)
@@ -339,6 +310,7 @@ function _timeStep_distributed!(n::NumModelBdG)
     dims = PencilArrays.size_global(n.f.ϕ)
     Ng = prod(dims)
     out = [similar(n.f.ϕ), similar(n.f.ϕ)]
+    # see `timeStep!` for the +2
     nev2 = 2 * n.nev + 2
     ncv = n.ncv > 0 ? n.ncv : min(max(nev2 + 5, 20), 2Ng - 2)
 
@@ -401,12 +373,6 @@ end
 Select and normalize the physical BdG modes from the raw eigenvectors: keep the
 ω > 0 branch (positive symplectic norm s = ‖u‖² - ‖v‖²), drop the gauge mode,
 renormalize to s = 1, return sorted by increasing ω.
-
-The gauge mode (u, v) ∝ (ψ, ψ*) is dropped by its structure, not its frequency:
-it is the only mode whose `u` AND `v` are simultaneously collinear with ψ, hence
-the test `min(ov_u, ov_v) ≥ zero_ov` with ov_u = |⟨ψ,u⟩|/‖u‖‖ψ‖, ov_v =
-|⟨ψ*,v⟩|/‖v‖‖ψ‖. A frequency cut would not do — when ψ is not an exact
-eigenvector of the discrete operator, the gauge mode sits at a small nonzero ω.
 """
 function bdg_output(n::NumModelBdG, ωs, ev; zero_ov=0.9, ψ=parent(n.f.ϕ))
     # `ψ` is the stationary state matching the layout of `ev`: the local data on one
@@ -425,9 +391,8 @@ function bdg_output(n::NumModelBdG, ωs, ev; zero_ov=0.9, ψ=parent(n.f.ϕ))
         s > 0 || continue              # ω < 0 branch (s < 0)
         un, vn = sqrt(sum(abs2, col[1:N])), sqrt(sum(abs2, col[N+1:2N]))
         (un > 0 && vn > 0) || continue
-        # Structural test, not frequency-based; see the `bdg_output` docstring.
-        # `min` and not `max`: a physical mode may have ONE component along ψ
-        # without being the gauge mode, which `max` would discard.
+        # Structural test, not frequency-based: `min` and not `max`, since a physical
+        # mode may have ONE component along ψ without being the gauge mode.
         ov_u = abs(sum(conj.(vec(ψp)) .* col[1:N])) / (un * ψn)
         ov_v = abs(sum(vec(ψp) .* col[N+1:2N])) / (vn * ψn)
         min(ov_u, ov_v) < zero_ov || continue             # zero mode

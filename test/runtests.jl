@@ -1401,12 +1401,10 @@ end
 # ARGLE (external velocity): Cartesian axis symmetry of the |u|^2 term
 # ==========================================================================
 @testset "ARGLE 3D external velocity: isotropy under axis relabeling" begin
-    # The scheme puts in psi1 both an advection term -i u.grad and a potential
-    # term |u|^2/(-4 coeffD). Regression (fixed in 2025-10): the 3D method used
-    # uadvx^2 + uadvy^2, dropping uadvz^2, while the advection DID contain
-    # uadvz*dz. Measured defect: 2.0% density difference between two labelings
-    # of the same physical problem, and norms drifting apart. The 2D method is
-    # correct as shipped (PotentialExternalVelocity sets uadvz = [] in 2D).
+    # psi1 carries both an advection term −i u·∇ and a potential term
+    # |u|^2/(−4·coeffD). Both must use the SAME components of u, otherwise the
+    # result depends on how the axes are labelled. 2D is exempt:
+    # PotentialExternalVelocity sets uadvz = [] there.
     N, U0, cD = 32, 0.3, -0.5
     grid = Grid((N, N, N), ((0.0, 2π), (0.0, 2π), (0.0, 2π)))
     f0(x, y, z) = 0.0
@@ -1446,13 +1444,13 @@ end
 # BdG zero-mode filter: structural, calibrated over a parameter sweep
 # ==========================================================================
 @testset "BdG zero-mode filter: sweep calibration (small cases)" begin
-    # Pins both ends of the zero_ov threshold through the public path, in cases
-    # cheap enough to run in the suite (24²):
-    # (a) weakly interacting trap — the Kohn mode, a PHYSICAL mode with large
-    #     overlap with ψ, survives the filter while the zero mode is dropped;
+    # Pins both ends of the `zero_ov` threshold through the public path, in cases
+    # cheap enough for the suite (24²):
+    # (a) weakly interacting trap — the Kohn mode, a PHYSICAL mode with large overlap
+    #     with ψ, survives while the zero mode is dropped;
     # (b) vortex state — the zero mode sits at a small NONZERO frequency, so a
-    #     frequency-based filter would keep it, and it is dropped structurally.
-    # The threshold value itself is calibrated on a sweep, not on these points.
+    #     frequency cut would keep it and it is dropped structurally.
+    # The threshold itself is calibrated on a sweep, not on these two points.
     function bdg_modes(N, L, β; γx=1.0, γy=1.0, vortex=false, nev=8, ncv=0)
         g = Grid((N, N), ((-L, L), (-L, L)))
         f = Field(g, ComplexField())
@@ -1595,12 +1593,11 @@ end
 end
 
 # ==========================================================================
-# Dealiasing bound: global, rank-independent (regression test for the fix)
+# Dealiasing bound: global, rank-independent
 # ==========================================================================
-# The bound must come from the plan's global wavenumber vectors. On a single
-# rank the local grid IS the global one, so ξmax_global must equal the value
-# computed from the full spectral grid — this pins the definition; the
-# rank-count behaviour itself is measured by benchmarks/scalability_rankinv.jl.
+# On a single rank the local grid IS the global one, so this pins the
+# DEFINITION of the bound; rank-count behaviour is measured by
+# benchmarks/scalability_rankinv.jl.
 @testset "ξmax_global is the (4/9)-rule bound of the FULL grid" begin
     for dims in ((48, 48), (48, 48, 48))
         g = Grid(dims, ntuple(_ -> (-2π, 2π), length(dims)))

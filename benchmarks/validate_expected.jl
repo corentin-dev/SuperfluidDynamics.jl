@@ -72,9 +72,9 @@ function ground_state(dim::Int, gammas; beta, L, Nx, dt, niter, m::Integer=0,
     γnames = (:γx, :γy, :γz)
     pot = PotentialQuadratic(field; [γnames[i] => gammas[i] for i in 1:dim]...)
     param = GrossPitaevskiiParameters(; coeffΔ=-0.5, β=beta, Ω=0.0, pot=pot)
-    # Backward Euler: the descent scheme for ground states (CN/CNQN are
-    # not descent methods: at dt=0.05 they settled on a spurious state,
-    # E=471 vs 1.044 measured — reported, src/ untouched).
+    # Backward Euler: a descent scheme, which is what drives E to the minimum.
+    # Crank-Nicolson / CN-QuasiNewton are not: nothing pushes E down, so they can
+    # settle on a fixed point that is not the ground state.
     n = MT(field, param, dt, niter, 10 * niter)
     prev, stall = Inf, 0
     for it in 1:niter
@@ -119,9 +119,9 @@ function case_baodu1d()
 end
 
 # ---------------------------------------------------------------------------
-# Bao & Du 2D/3D (Ex. 3-4, rows without stirrer). The stirrer rows CANNOT run:
-# src/ has no gaussian-stirrer potential (zero/quadratic/quartic only) and the
-# exact V formula is not in the provided files -> reported as missing info.
+# Bao & Du 2D/3D (Ex. 3-4). Rows with the gaussian stirrer are skipped: src/ has
+# no stirrer potential (zero/quadratic/quartic only) and the reference files do
+# not give its formula.
 # ---------------------------------------------------------------------------
 function case_baodu2d3d()
     println("== ground_states_bao_du_2D3D.csv (Bao & Du 2004, Ex. 3-4) ==")

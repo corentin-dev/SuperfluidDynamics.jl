@@ -91,12 +91,8 @@ end
 end
 
 # --- Dealiasing bound: GLOBAL, independent of the rank count --------------
-# The 2/3-rule bound must come from the plan's global wavenumber vectors. On
-# several ranks the local (pencil) grid sees only part of the spectrum; the
-# old rank-local bound differed per rank and made the physics rank-dependent
-# (measured 1.9e-3 energy drift 1→4 ranks, benchmarks/scalability_rankinv.jl).
-# This test pins the value on a DISTRIBUTED grid, which single-process
-# runtests.jl cannot do (there, local == global by construction).
+# Pins ξmax_global on a DISTRIBUTED grid, which single-process runtests.jl
+# cannot do (there, local == global by construction).
 @testset "MPI ξmax_global is the global (4/9) bound ($nrank ranks)" begin
     for dims in ((48, 48), (48, 48, 48))
         g = Grid(dims, ntuple(_ -> (-2π, 2π), length(dims)))
@@ -111,12 +107,9 @@ end
 end
 
 # --- NS energy after stepping: rank-count invariant ------------------------
-# Same fixed problem at 1/2/4 ranks must give the SAME energy to ~machine
-# precision: with the global bound the dealiasing mask is identical on every
-# rank, so the whole computation is a partition of deterministic arithmetic.
-# The 1-rank reference below comes from running this file with -n 1 (see the
-# printed value; benchmarks/scalability_rankinv.jl measures the same fact on
-# larger grids). The 1-rank dealias=0 floor (runtests-style) is bit-reproducible.
+# With the global bound the dealiasing mask is identical on every rank, so the
+# whole computation is a partition of deterministic arithmetic: the same fixed
+# problem must give the same energy at 1/2/4 ranks to ~machine precision.
 @testset "MPI NS energy is rank-count invariant ($nrank ranks)" begin
     grid = Grid((48, 48, 48), ntuple(_ -> (-π, π), 3))
     field = Field(grid, ComplexField(); ndims=3)
@@ -126,11 +119,8 @@ end
     # (analytic function of the coordinates: no RNG layout dependence)
     @. field.ux = sin(field.x) * cos(field.y) * cos(field.z)
     @. field.uy = -cos(field.x) * sin(field.y) * cos(field.z)
-    @. field.uz = sin(field.x) * sin(field.y) * sin(field.z)   # div-free: ∂x u + ∂y v + ∂z w = 0? not exactly,
-    # but the projection is deterministic and rank-independent — what matters
-    # here is the reproducibility of the FULL pipeline, not the specific state.
-    # make the state divergence-free analytically:
-    #   u = sin x cos y cos z, v = -cos x sin y cos z, w = 0 is div-free.
+    @. field.uz = sin(field.x) * sin(field.y) * sin(field.z)
+    # div-free state: u = sin x cos y cos z, v = −cos x sin y cos z, w = 0
     fill!(parent(field.uz), 0.0)
     E0 = energy(n)[2]
     for _ in 1:nsteps
@@ -138,11 +128,9 @@ end
     end
     E1 = energy(n)[2]
     ratio = E1 / E0
-    # 1-rank reference (pinned with this exact code at -n 1 on v2.1.0+fix)
-    # measured with this exact code at -n 1 (v2.1.0 + ξmax_global fix):
-    # 1-rank reference, measured with this exact code at -n 1 (v2.1.0 + fix).
-    # 2/4 ranks reproduce it to 1 ulp (only the Allreduce summation order of
-    # `energy` differs); the pre-fix rank-local bound drifted by ~1e-3.
+    # 1-rank reference: `mpiexec -n 1 julia test/mpi_tests.jl`; 2/4 ranks
+    # reproduce it to 1 ulp (only the Allreduce summation order of `energy`
+    # differs).
     REF = 0.9940155853022443
     @test ratio ≈ REF rtol = 1e-12
     rank == 0 && println("   [rank-invariance] ratio E1/E0 = ", ratio)

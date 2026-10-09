@@ -14,35 +14,21 @@ counterpart of the package's implicit and splitting real-time schemes
 
 - `"RK1"` — forward Euler (1st order);
 - `"RK2"` — explicit midpoint (2nd order);
-- `"RK4"` — classical 4-stage RK (4th order), as in the reference.
+- `"RK4"` — classical 4-stage RK (4th order).
 
 Because the Laplacian is treated **explicitly** in the spectral domain, the
-schemes are unconditionally *accurate* but subject to the usual dispersive
-stability limit of explicit methods,
+schemes are subject to the usual dispersive stability limit of explicit methods,
 
     |coeffΔ| k_max² Δt ≲ 2   (RK1),   |coeffΔ| k_max² Δt ≲ ~2.8   (RK4),
 
-which is why the implicit / splitting schemes are preferred for long,
-high-resolution GP evolutions. `NumModelGPRK` is intended for benchmarks,
-short runs, and as an accuracy reference for the implicit schemes.
+so the implicit / splitting schemes are preferred for long, high-resolution GP
+evolutions.
 
 `filter` places the 2/3-rule filter, which zeroes the modes above
 `(2/3)·k_max`:
 
-- `:product` — filter the nonlinear term `(V + β|ϕ|²)ϕ` inside every stage, as
-  the NS, HVBK and NSGP models filter their nonlinear terms. Keeps the temporal
-  order of `stepper`. Default.
-- `:solution` — filter the state after each step. Splitting a projection this way
-  caps the observed temporal order at 1, whatever `stepper` is.
-
-Reference GPS applies **both**, and more than either option here, when `GP%filter = 1`
-(off by default — `integer :: filter_GP = 0` in `GPS_var_def.f90`): in
-`GPS_model_unstationary.f90`, `calc_nlk_Lap_GP` filters its whole output
-`dtGP*uim*((cormass1 + α*lap)φ + nl)`, i.e. the kinetic term too, not only the
-nonlinear product (line ~720/802), and `GP_RK4` then filters the state `phi_tilde`
-after the RK4 combination (line ~892). No single option here reproduces that; `:product`
-matches the *intent* (dealias the product) while keeping the order of the scheme, and is
-the default for that reason, not because GPS does it.
+- `:product` — filter the nonlinear term `(V + β|ϕ|²)ϕ` inside every stage;
+- `:solution` — filter the state after each step;
 - `:none` — no filter.
 """
 mutable struct NumModelGPRK{F,P,Plan} <: AbstractNumModel{F,P,Plan}
@@ -113,6 +99,8 @@ computed with the package spectral operators (`lapRot`), written into `out`
 function gp_rhs!(n::NumModelGPRK, out, ψ)
     lin = lapRot(n, ψ)                          # (−coeffΔ ∇² + iΩ L_z) ψ, spectral
     if n.filter === :product
+        # The filter acts on the term, not on ψ: the stages stay a polynomial in Δt,
+        # so the order of `stepper` is preserved.
         _gp_nl!(n, n.nl, ψ)
         @. out = 1im * (lin - n.nl)
     else
@@ -172,6 +160,8 @@ function timeStep!(n::NumModelGPRK)
         throw(ArgumentError("NumModelGPRK stepper \"$(n.stepper)\" unknown (use \"RK1\", \"RK2\" or \"RK4\")."))
     end
     if n.filter === :solution
+        # Projecting the state is an O(Δt) perturbation: it dominates the truncation
+        # error of RK4 and it removes spectral weight at every step.
         mul_all!(n.shat, n.plan, n.f.ϕ)
         _gp_filter!(n, n.shat)
         ldiv_all!(n.f.ϕ, n.plan, n.shat)

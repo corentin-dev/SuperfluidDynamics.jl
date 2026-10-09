@@ -52,6 +52,20 @@ rng = MersenneTwister(12345)
 # "edge" ranks hold only |ξ_d| ≤ ~N/4 — their bound is (4/9)(N/4)², a factor 4
 # below the global (4/9)(N/2)². Modes with 0.20N < |k| < 0.33N are therefore
 # kept by some ranks and deleted by others — if the bound is rank-local.
+#
+# MEASURED, and it does not hold as written: the bound compares the SUM
+# |ξ|² = ξx²+ξy²+ξz² against ξmax, so a band chosen per axis lands above the
+# global bound once summed. For this box (-2π,2π)³ at N=48 the seed puts 100 %
+# of its energy at |ξ|² = 144…241 against ξmax = (4/9)·12² = 64, i.e. every
+# seeded mode is deleted by the GLOBAL mask (mask alone, no timeStep: 1.8e-29
+# of the energy survives; single plane waves give 1.000000 kept at |ξ|²=36 and
+# 0.000000 at |ξ|²=144, so the filter is exact on both sides). Consequence for
+# the GP branch: with `filter=:solution` the state is annihilated whatever the
+# rank count, so "identical across ranks" there is TRUE TRIVIALLY and proves
+# nothing about rank-dependence. A discriminating seed needs |ξ|² < ξmax on the
+# sum (e.g. k=(4,4,2) at N=48, |ξ|²=36) while still exceeding an edge rank's
+# local bound. Not changed here: the archived numbers of this branch were
+# produced with this seed.
 # (The NS projection removes the divergence at the first step; what matters is
 # the spectral support, not the polarisation.)
 fracs = [(0.16, 0.16, 0.08), (0.25, 0.08, 0.04), (0.04, 0.25, 0.08),

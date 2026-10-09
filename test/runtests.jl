@@ -397,6 +397,98 @@ end
 end
 
 # ==========================================================================
+# ODD grid sizes
+# ==========================================================================
+# Every other testset in this file uses an EVEN resolution (16, 20, 24, 28, 32, 36,
+# 40, 48, 64, 96, 128, 256). Nothing here therefore pins the code against an odd
+# number of points per axis, which is the classic failure mode for hand-written
+# index arithmetic (spectral mode layout, tridiagonal solves, mirrored closure).
+# Setups are the ones above, only `n` changes, and so are the tolerances: the same
+# TOL_FFT / TOL_FD already used for the even grids. That reuse is a measurement, not an
+# assumption: at these resolutions the odd error was checked to land under the same
+# bound as the even one (58/58, Julia 1.12, CPU).
+@testset "derivatives on odd grid sizes (FFT, FD, compact: periodic/Dirichlet/Neumann)" begin
+    for n in (29, 31, 33)
+        # --- 2D FFT: exact spectral, parity must be irrelevant ---
+        field = Field(Grid((n, n), ((-12, 12), (-12, 12))), ComplexField())
+        X = reshape(vec(field.x), :, 1); Y = reshape(vec(field.y), 1, :)
+        kx, ky = set_mode_2d!(field, 2, 3)
+        gf = GradientField(field; rotation=true)
+        SuperfluidDynamics.computeDerivatives!(gf, Plan(field), field.ϕ)
+        ϕ = field.ϕ
+        @test relerr(gf.dx,  1im * kx * ϕ) < TOL_FFT
+        @test relerr(gf.dy,  1im * ky * ϕ) < TOL_FFT
+        @test relerr(gf.ddx, -kx^2 * ϕ)   < TOL_FFT
+        @test relerr(gf.ddy, -ky^2 * ϕ)   < TOL_FFT
+        @test relerr(gf.rx,  Y .* gf.dx)   < TOL_FFT
+        @test relerr(gf.ry, -X .* gf.dy)   < TOL_FFT
+
+        # --- 2D FD ---
+        field = Field(Grid((n, n), ((-12, 12), (-12, 12))), ComplexField())
+        kx, ky = set_mode_2d!(field, 2, 3)
+        gf = GradientField(field; rotation=false)
+        SuperfluidDynamics.computeDerivatives!(gf, Plan(field; t=SuperfluidDynamics.FiniteDifferencePlan()), field.ϕ)
+        ϕ = field.ϕ
+        @test relerr(gf.dx,  1im * kx * ϕ) < TOL_FD
+        @test relerr(gf.ddx, -kx^2 * ϕ)   < TOL_FD
+
+        # --- 2D compact, periodic ---
+        field = Field(Grid((n, n), ((-12, 12), (-12, 12))), ComplexField())
+        kx, ky = set_mode_2d!(field, 2, 3)
+        gf = GradientField(field; rotation=false)
+        SuperfluidDynamics.computeDerivatives!(gf, Plan(field; t=SuperfluidDynamics.CompactPlan()), field.ϕ)
+        ϕ = field.ϕ
+        @test relerr(gf.dx,  1im * kx * ϕ) < TOL_FD
+        @test relerr(gf.ddx, -kx^2 * ϕ)   < TOL_FD
+
+        # --- 2D compact, Dirichlet then Neumann on both axes ---
+        Ld = 4.0; c = π / Ld
+        field = Field(Grid((n, n), ((-Ld/2, Ld/2), (-Ld/2, Ld/2))), ComplexField())
+        sx = sin.(c * (reshape(field.x, :, 1) .+ Ld/2)); cx_ = cos.(c * (reshape(field.x, :, 1) .+ Ld/2))
+        sy = sin.(c * (reshape(field.y, 1, :) .+ Ld/2)); cy_ = cos.(c * (reshape(field.y, 1, :) .+ Ld/2))
+        field.ϕ .= sx * sy
+        gf = GradientField(field; rotation=false)
+        SuperfluidDynamics.computeDerivatives!(gf, Plan(field; t=SuperfluidDynamics.CompactPlan(bcs=(1, 1))), field.ϕ)
+        I = 3:(n - 2)
+        @test relerr(parent(gf.dx)[I, I],  (c * cx_ * sy)[I, I])   < TOL_FD
+        @test relerr(parent(gf.ddx)[I, I], (-c^2 * sx * sy)[I, I]) < TOL_FD
+
+        Ln = 4.0
+        field = Field(Grid((n, n), ((0.0, Ln), (0.0, Ln))), ComplexField())
+        X = reshape(vec(field.x), :, 1); Y = reshape(vec(field.y), 1, :)
+        cn = 2π / vec(field.x)[end]        # even about both walls (as above)
+        field.ϕ .= cos.(cn * X) * cos.(cn * Y)
+        gf = GradientField(field; rotation=false)
+        SuperfluidDynamics.computeDerivatives!(gf, Plan(field; t=SuperfluidDynamics.CompactPlan(bcs=(2, 2))), field.ϕ)
+        @test relerr(parent(gf.dx), (-cn * sin.(cn * X)) * cos.(cn * Y)) < TOL_FD
+        @test relerr(parent(gf.ddx), (-cn^2 * cos.(cn * X)) * cos.(cn * Y)) < TOL_FD
+        # the Neumann condition itself has to hold on an odd grid too
+        @test maximum(abs.(parent(gf.dx)[1, :])) < 1e-12
+        @test maximum(abs.(parent(gf.dx)[end, :])) < 1e-12
+    end
+
+    # --- 3D FFT and compact, odd in all three axes (n^3 kept small on purpose) ---
+    for n in (29, 31)
+        field = Field(Grid((n, n, n), ((-12, 12), (-12, 12), (-12, 12))), ComplexField())
+        kx, ky, kz = set_mode_3d!(field, 2, 3, 4)
+        gf = GradientField(field; rotation=true)
+        SuperfluidDynamics.computeDerivatives!(gf, Plan(field), field.ϕ)
+        ϕ = field.ϕ
+        @test relerr(gf.dx,  1im * kx * ϕ) < TOL_FFT
+        @test relerr(gf.ddx, -kx^2 * ϕ)   < TOL_FFT
+        @test relerr(gf.ddz, -kz^2 * ϕ)   < TOL_FFT
+
+        field = Field(Grid((n, n, n), ((-12, 12), (-12, 12), (-12, 12))), ComplexField())
+        kx, ky, kz = set_mode_3d!(field, 2, 3, 4)
+        gf = GradientField(field; rotation=false)
+        SuperfluidDynamics.computeDerivatives!(gf, Plan(field; t=SuperfluidDynamics.CompactPlan()), field.ϕ)
+        ϕ = field.ϕ
+        @test relerr(gf.dx,  1im * kx * ϕ) < TOL_FD
+        @test relerr(gf.ddz, -kz^2 * ϕ)   < TOL_FD
+    end
+end
+
+# ==========================================================================
 # CompactPlan on GPU
 # ==========================================================================
 # On a GPU grid the compact scheme is solved by a dedicated CUDA Thomas kernel

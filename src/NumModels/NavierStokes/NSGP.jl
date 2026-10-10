@@ -5,15 +5,11 @@ export NSGPParameters, NumModelNSGP,
     NSGPParameters(; α, ν, β, ρn, ρs, Btab, Bptab, ξ, ε2, kreg, ηD, one_way,
                    unin, vnin, wnin)
 
-Parameters of the coupled GP–NS two-fluid model of "Coupling Navier-Stokes
-and Gross-Pitaevskii equations for the numerical simulation of two-fluid
-quantum flows" (Brachet et al., arXiv:2211.07361), as implemented in the
-GPS Fortran code (`GPS_NS_solver.f90`). Convention identical to the Fortran
-code: `α` is the (negative) GP diffusion coefficient, `β` the GP interaction
-coefficient, and the friction coefficients `B★`,`B'★` are derived from the
-tabulated Hall–Vinen–Bekarevich–Khalatnikov coefficients `Btab`,`Bptab`
-(paper appendix B / `GPS_IO_config.f90`), with `F = -1/(|α| kreg²)`,
-`betaNS = B★/F`, `betapNS = B'★/F`.
+Parameters of the coupled GP–NS two-fluid model: `α` is the (negative) GP
+diffusion coefficient, `β` the GP interaction coefficient, and the friction
+coefficients `B★`,`B'★` are derived from the tabulated
+Hall–Vinen–Bekarevich–Khalatnikov coefficients `Btab`,`Bptab` by
+`F = -1/(|α| kreg²)`, `betaNS = B★/F`, `betapNS = B'★/F`.
 """
 mutable struct NSGPParameters <: AbstractParameters
     α::Real
@@ -62,7 +58,7 @@ function NSGPParameters(;
     ηD = ηD == 0.0 ? 0.02 * Btab : ηD
     F = -1 / (abs(α) * kreg^2)
     ρ = ρn + ρs
-    # paper appendix B (== GPS_IO_config.f90): B★, B'★ from Btab, B'tab
+    # B★, B'★ from Btab, Bptab
     denom = ρn^2 * (Btab^2 + Bptab^2) - 2 * Bptab * ρ * ρn + ρ^2
     Bstar = Btab * ρ * ρs / denom
     Bpstar = (Bptab * ρ * ρs - ρn * ρs * (Bptab^2 + Btab^2)) / denom
@@ -98,9 +94,6 @@ velocity, counterflow, and the three coupling quantities: friction force
 `F_SN`, normal-fluid advection `u_adv = v_slip^cpl`, GP coupling potential
 `V_xm`) and the GP/NS increments `calc_nlk_Lap_GP_coupled!` /
 `calc_nlk_NS_coupled!`.
-
-Port of `NSGP_model_RKImp` / `compute_u_adv_Fns` / `calc_nlk_Lap_GP` /
-`calc_nlk_NS` from the GPS Fortran code.
 """
 mutable struct NumModelNSGP{FG, FN, P, PlanN} <: AbstractNumModel{FN, P, PlanN}
     "GP (superfluid) scalar field."
@@ -398,9 +391,6 @@ end
 
 # Regularisation filter applied to a spectral vector field (last-pencil
 # layout): `exp(-|k|²/kreg²)` masked by the 2/3 rule (zero above threshold).
-# Port of Fortran `use_filter_3c(u_s, filter_smooth)` with
-# `filter_smooth = exp(-wvn/kMFPE²)` and `kMFPE = 1/kreg` (so exp(-wvn/kreg²)),
-# zero where the 2/3 dealiasing mask is zero.
 function _gauss_smooth!(n::NumModelNSGP, uhat)
     gridξ = spectral_grid(n.plan)
     kreg2 = n.param.kreg^2
@@ -456,9 +446,8 @@ end
 """
     compute_u_adv_Fns!(n, phihat, uhat)
 
-Port of `compute_u_adv_Fns` (`GPS_NS_solver.f90`). From the spectral GP
-wavefunction `phihat` and the spectral normal velocity `uhat`, compute and
-store in the model:
+From the spectral GP wavefunction `phihat` and the spectral normal velocity
+`uhat`, compute and store in the model:
 
 - `us_phys` / `us_hat`: the regularised superfluid velocity
   ``v_s^{reg} = (1+ε²) F⁻¹[e^{-k²/kreg²} F(u_s)]``,
@@ -467,8 +456,7 @@ store in the model:
 - `w_phys`: the counterflow ``w = v_n - v_s^{reg}`` (or
   ``v_n^{in} - v_s^{reg}`` in one-way coupling),
 - `uadv_phys` / `uadv_hat`: the complex advection velocity
-  ``v_{slip}^{cpl} = (c_U + i c_V|Ω|) w_p`` (paper Eq. (vslipalt),
-  ``c_U = U★``, ``c_V = F V★``),
+  ``v_{slip}^{cpl} = (c_U + i c_V|Ω|) w_p``, ``c_U = U★``, ``c_V = F V★``),
 - `fns_phys` / `fns_hat`: the friction force ``F_SN = ρ_s Ω×v_{slip}``
   (dealiased and Helmholtz-projected),
 - `gp_phys_c`: the GP coupling potential (physical, complex, pen_x)
@@ -623,7 +611,7 @@ function compute_u_adv_Fns!(n::NumModelNSGP, phihat, uhat)
 end
 
 # ---------------------------------------------------------------------
-# GP increment  (port of calc_nlk_Lap_GP, GPS_model_unstationary.f90)
+# GP increment
 # ---------------------------------------------------------------------
 
 """
@@ -706,7 +694,7 @@ function calc_nlk_Lap_GP_coupled!(n::NumModelNSGP, phihat, out)
 end
 
 # ---------------------------------------------------------------------
-# NS increment  (port of calc_nlk_NS, GPS_NS_solver.f90)
+# NS increment
 # ---------------------------------------------------------------------
 
 """
@@ -759,7 +747,7 @@ function calc_nlk_NS_coupled!(n::NumModelNSGP, uhat, out)
 end
 
 # ---------------------------------------------------------------------
-# time stepping  (port of NSGP_model_RKImp, GPS_NS_solver.f90)
+# time stepping
 # ---------------------------------------------------------------------
 
 """
@@ -771,8 +759,8 @@ scheme `n.stepper` ("RK1Imp", "RK2Imp" or "RK4Imp"). Each RK stage evaluates
 Δt) and `calc_nlk_NS_coupled!` (NS increment, without Δt). The NS Laplacian is
 implicit via the exact multiplier `exp(-νΔt|k|²)`, the GP Laplacian explicit.
 After the update the normal velocity is Helmholtz-projected and, if
-`param.filter`, the 2/3 rule is applied to both states (as in the Fortran
-`NSGP_model`). The canonical fields `fgp.ϕ` and `fns.u` are synchronised.
+`param.filter`, the 2/3 rule is applied to both states. The canonical fields
+`fgp.ϕ` and `fns.u` are synchronised.
 """
 function timeStep!(n::NumModelNSGP)
     p = n.param

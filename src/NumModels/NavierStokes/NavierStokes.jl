@@ -50,8 +50,7 @@ taylor_green!(f::AbstractField2D) = taylor_green!(f, f.x, f.y)
     taylor_green!(f, x, y, z)
 
 Initialize `f` with a 3D Taylor-Green vortex, periodic on the box for any
-box lengths. For a cubic box it is exactly the GPS Fortran field
-(`initsolNS == "TG"` in `GPS_initial_conditions.f90`):
+box lengths:
 
     u = ( sin(kx x) cos(ky y) cos(kz z),
         -cos(kx x) sin(ky y) cos(kz z),
@@ -59,7 +58,7 @@ box lengths. For a cubic box it is exactly the GPS Fortran field
 
 with the y-component scaled by `kx/ky` so that the field stays exactly
 divergence-free (∂x ux + ∂y uy = (kx - kx)·cos·cos·cos = 0) on non-cubic
-boxes too (the plain GPS field is only divergence-free when kx = ky).
+boxes too.
 """
 function taylor_green!(f, x, y, z)
     Lx, Ly, Lz = f.g.Lx, f.g.Ly, f.g.Lz
@@ -311,11 +310,8 @@ end
 Nonlinear (advective) part of the incompressible NS RHS, returned in
 spectral form. For a divergence-free field the advection term
 `-P(u × ∇×u)` equals `-P((u·∇)u)` (vector identity), and the scheme
-integrates `∂t u = νΔu - P(u × ω)`. This computes `k_hat = P(u × ω)`
-(i.e. the negative of the advective term, matching the Fortran
-`calc_nlk_NS`); `timeStep!` then adds `+Δt·k_hat` to `u_hat`. The
-conservation of kinetic energy at `ν = 0` (validated in the tests) fixes
-the sign: `u · P(u × ω) = 0` for divergence-free `u`.
+integrates `∂t u = νΔu - P(u × ω)`. This computes `k_hat = P(u × ω)` (i.e. the
+negative of the advective term); `timeStep!` adds `+Δt·k_hat` to `u_hat`.
 
 `u_hat` is the current spectral velocity (last-pencil layout); `k_hat` is
 the output spectral RHS (last-pencil layout).

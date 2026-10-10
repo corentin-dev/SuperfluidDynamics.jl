@@ -350,12 +350,11 @@ end
 """
     timeStep!(n)
 
-Advance the HVBK model by one step `n.Δt` with `stepper` ∈ "RK1" or "RK2". The
-scheme follows the Fortran `calcVelocity_forced_04` (RK2): each fluid's viscous
-Laplacian is implicit via `exp(-νΔt|k|²)`, the first derivative is
-viscosity-weighted and a second (corrective) derivative is taken at the
-intermediate state. Both fields are Helmholtz-projected and (if `param.filter`)
-2/3-dealiased after the update. The canonical fields `fn.u` / `fs.u` are
+Advance the HVBK model by one step `n.Δt` with `stepper` ∈ "RK1" or "RK2":
+each fluid's viscous Laplacian is implicit via `exp(-νΔt|k|²)`, the first
+derivative is viscosity-weighted and a second (corrective) derivative is taken
+at the intermediate state. Both fields are Helmholtz-projected and (if
+`param.filter`) 2/3-dealiased after the update. The canonical fields `fn.u` / `fs.u` are
 synchronised.
 """
 function timeStep!(n::NumModelHVBK)
@@ -400,7 +399,7 @@ function timeStep!(n::NumModelHVBK)
         throw(ArgumentError("HVBK stepper \"$(n.stepper)\" unknown (use \"RK1\" or \"RK2\")."))
     end
 
-    # --- 2/3 dealiasing of the states (as in the Fortran step) ---
+    # --- 2/3 dealiasing of the states ---
     if n.param.filter
         _hvbk_dealias!(n, n.un_hat)
         _hvbk_dealias!(n, n.us_hat)

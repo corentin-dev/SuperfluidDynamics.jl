@@ -4,9 +4,7 @@
 # On GPU the compact relation is solved with a dedicated Thomas kernel instead
 # of the spectral (Fourier-multiplier) path: one thread per grid line performs
 # the stencil, the Thomas sweep, the cyclic correction and the back
-# substitution. The banded Thomas multipliers (`CompactAxis`, CPU side) are
-# uploaded to the device once per axis at plan construction, so the kernel
-# only does the per-call work.
+# substitution.
 #
 # Kernels solve along the leading (fastest) dimension of a 2D `(n, L)` or 3D
 # `(n, L2, L3)` raw array; the y/z directions are handled with PencilArray

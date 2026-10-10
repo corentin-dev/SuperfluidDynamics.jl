@@ -2,7 +2,6 @@ using SuperfluidDynamics
 
 # =====================================================================
 # 3D Navier-Stokes — Taylor-Green vortex, semi-implicit RK4
-# (port of NS_model_RK4Imp from the GPS Fortran code)
 #
 # du/dt = ν Δu - P(u × ∇×u),  ∇·u = 0
 # viscosity handled implicitly as exp(-ν Δt |k|²), advection explicit (RK4)

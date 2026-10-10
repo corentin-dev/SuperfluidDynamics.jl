@@ -1,13 +1,9 @@
-# CUDA (optional at load time): the GPU compact backend is a Thomas kernel
-# compiled by CUDA.jl. `using CUDA` re-exports the CUDACore pieces the kernel
-# file needs (@cuda, blockIdx/threadIdx/blockDim, CuArray). When CUDA cannot
-# be loaded (no driver, or a build without it), none of it is defined and
-# CompactPlan does not offer the GPU kernel backend.
 try
     using CUDA
 catch
     CUDA = nothing
 end
+# if CUDA available, load a GPU version of compact schemes
 if CUDA !== nothing
     include("compact_gpu.jl")
 end
@@ -20,11 +16,10 @@ struct FFTPlan <: PlanType end
 struct FiniteDifferencePlan <: PlanType end
 "Compact finite difference plan (6th-order periodic compact scheme).
 
-Backend selection (only relevant for GPU / non-Array grids):
-- `:auto` (default): Thomas on CPU, CUDA Thomas kernel on GPU;
-- `:thomas`: force the Thomas line-solve (CPU host loop or CUDA kernel);
-- `:spectral`: evaluate the operator as a Fourier multiplier (GPU, requires a
-  complex field; the fast periodic-only option).
+Backend selection:
+- `:auto` (default): FD, use GPU if present;
+- `:thomas`: FD, force CPU usage;
+- `:spectral`: FFT, means periodic boundary conditions.
 
 Boundary conditions (`bcs`): a tuple of one entry per axis giving the
 condition on that axis — `0` (or `:periodic`) for the periodic compact
@@ -114,11 +109,7 @@ finite-difference derivative on one axis. Built by [`compact_setup_np`](@ref).
 
 The operator is the 6th-order compact derivative in the interior, with one-sided
 (boundary) and relaxed rows at the two ends so that the compact relation is
-closed without wrapping. Unlike the periodic case, the LHS is a plain
-(non-cyclic) tridiagonal matrix whose sub/super diagonals are row-varying near
-the boundary; it is solved with an ordinary Thomas sweep (no rank-1 cyclic
-correction). The stencil rows and the LHS diagonals are the GPS `cdl==2`
-operators, cross-checked with Xcompact3d (`ncl==2`).
+closed without wrapping.
 
 $(TYPEDFIELDS)
 """
@@ -170,10 +161,7 @@ Precomputed multipliers for the **non-periodic (homogeneous Neumann)** compact
 finite-difference derivative on one axis. Built by [`compact_setup_neu`](@ref).
 
 The boundary is closed by an even (Neumann, `du/dn = 0`) mirror of the field
-about each wall, so the right-hand side is just the interior stencil evaluated
-on the mirrored field: only the interior coefficients `a`, `b` and the
-row-varying LHS (`sub`/`sup` plus the Thomas factors `s`/`w`) are stored —
-no one-sided boundary weights, unlike the Dirichlet path.
+about each wall.
 
 $(TYPEDFIELDS)
 """
@@ -204,12 +192,7 @@ Fourier symbol of the 6th-order periodic compact stencil, evaluated
 pointwise on the wavenumbers `ξ` (rad/m) at grid spacing `Δ`.
 
 The compact operator is a circulant pentadiagonal matrix (diagonal 1, first
-off-diagonal `a`, second `b`, corner `alpha`), so it is diagonalised by the
-discrete Fourier transform and is therefore a pure Fourier multiplier. That
-makes it trivially GPU-friendly (elementwise multiply after an FFT), in
-contrast with the equivalent Thomas line-solve, which needs scalar indexing
-and so cannot run on GPU arrays. The result is identical to the Thomas solve
-to machine precision (see the compact tests in `test/runtests.jl`).
+off-diagonal `a`, second `b`, corner `alpha`).
 
 Symbols (θ = ξ·Δ, the dimensionless phase per bin):
 * `order=1`: `(2ia sinθ + 2ib sin2θ) / (1 + 2α cosθ)`, α=1/3, a=(7/9)/Δ, b=(1/36)/Δ
@@ -243,11 +226,7 @@ wrap.
 
 The periodic wrap makes the coefficient matrix cyclic pentadiagonal. It is
 solved without building the matrix: a Thomas factorization of the leading
-tridiagonal part plus a cyclic corner correction. Because the corner
-perturbation is rank-one (a single `α` coupling at each end), the correction
-vector and its denominator depend only on the matrix, not on the right-hand
-side; both are precomputed here so that each evaluation costs one stencil plus
-two sweeps.
+tridiagonal part plus a cyclic corner correction.
 """
 function compact_setup(n::Int, Δ::Real, order::Int)
     if n < 8
@@ -300,8 +279,7 @@ derivative `order` (1 or 2).
 The interior is the same 6th-order compact stencil as [`compact_setup`](@ref).
 At each end, the two boundary rows use one-sided stencils and the two adjacent
 rows are relaxed (lower-order right-hand side with a modified LHS row), so the
-compact relation is closed without wrapping — the GPS `cdl==2` / Xcompact3d
-`ncl==2` operators:
+compact relation is closed without wrapping:
 
 - 1st derivative (`α=1/3`, `a=(7/9)/Δ`, `b=(1/36)/Δ`):
   row 1 `(−5u₁+4u₂+u₃)/2Δ`, row 2 `(3/4Δ)(u₃−u₁)`, mirrored rows `n-1`, `n`;
@@ -375,9 +353,7 @@ The boundary is closed by an even (Neumann, `du/dn = 0`) mirror of the field
 about each wall: the field is even about the boundary node, so the 1st
 derivative is odd (it vanishes at the wall) and the 2nd derivative is even.
 Evaluating the *interior* 6th-order compact stencil on the mirrored field
-closes the system — no one-sided boundary stencils are needed (this is the
-Xcompact3d `ncl==1` operator, ported and validated by 6th-order convergence
-against an analytic Neumann field).
+closes the system — no one-sided boundary stencils are needed.
 
 Consequences for the row-varying LHS (tridiagonal, diagonal 1, off-diagonals
 `α` in the interior):
@@ -548,10 +524,7 @@ wavenumber vectors. The spectral fields are dealiased on the last pencil,
 whose grid is distributed over two directions: a rank-local max sees only
 part of the spectrum, its bound is smaller than the global one, and the rank
 then zeroes modes its peers keep — physics that would depend on the rank
-count. The plan stores the full (undistributed) ξ vectors, so the global
-bound costs nothing and needs no MPI reduction. Models cache the value at
-construction (`n.ξmax`): on GPU, recomputing it per step is a device
-reduction plus a synchronisation.
+count. Models cache the value at construction (`n.ξmax`).
 """
 ξmax_global(plan::PlanFFT2D) = (4 / 9) * min(maximum(abs2, plan.ξx), maximum(abs2, plan.ξy))
 function ξmax_global(plan::PlanFFT3D)
@@ -679,16 +652,11 @@ end
 """
 $(TYPEDEF)
 
-Spectral-compact (Fourier-multiplier) 2D plan.
-
-On GPU arrays the Thomas line-solve used by `PlanCompact2D` cannot run (it
-needs scalar indexing on the local line, which GPU arrays forbid from the
-host). This plan instead exploits the fact that the *periodic* compact
-operator is a circulant matrix, hence a Fourier multiplier: each derivative
-is `IDFT(T(ξ)·FFT(ϕ))` with `T` the compact symbol from
+Spectral-compact (Fourier-multiplier) 2D plan: the *periodic* compact operator
+is a circulant matrix, hence a Fourier multiplier, so each derivative is
+`IDFT(T(ξ)·FFT(ϕ))` with `T` the compact symbol from
 [`compact_multiplier`](@ref). It reuses the standard FFT plan machinery
-(`mul_x!`/`ldiv_x!`/`grid_x`/…), which is fully GPU-native, and yields the
-same derivatives as the Thomas implementation to machine precision.
+(`mul_x!`/`ldiv_x!`/`grid_x`/…).
 
 Only complex fields are supported, because the FFT scratch buffers are
 complex.
@@ -744,10 +712,8 @@ GPU compact plan (CUDA Thomas kernel), 2D.
 
 The periodic compact relation is solved on the device with a dedicated
 kernel: one thread per grid line performs the Thomas forward sweep, the
-cyclic correction and the back substitution. The banded multipliers are
-precomputed per axis (`CompactAxisGPU`, device-side) so the kernel only
-runs the per-call elimination. `RealField` works as well as `ComplexField`
-(the kernel is dtype-agnostic), unlike the FFT-based plans.
+cyclic correction and the back substitution. `RealField` and `ComplexField`
+are both supported.
 
 # Fields
 * `ax`, `a2x`, `ay`, `a2y`: per-axis compact multipliers (1st and 2nd
@@ -1048,8 +1014,8 @@ function Plan(f::F;
         end
         # GPU (or any non-Array backend).
         if t.backend === :spectral
-            # See the 2D dispatch: Fourier multiplier through the standard
-            # FFT machinery (complex fields only), periodic axes only.
+            # Fourier multiplier through the standard FFT machinery
+            # (complex fields only), periodic axes only.
             if any(bc -> bc != 0, _compact_bcs(t, 3))
                 error("CompactPlan(backend=:spectral) is only defined for periodic axes; " *
                       "this plan has non-periodic (Dirichlet or Neumann) axes, which have no " *

@@ -21,10 +21,6 @@ function cross!(c, a, b)
     return c
 end
 
-# The 2/3-rule bound `ξmax_global` lives in Plans.jl (defined right after the
-# plan types, so every consumer — NS, NSGP, GP-RK, HVBK — sees it), and models
-# cache it as `n.ξmax` at construction.
-
 """
     dealias!(u_hat, ξx, ξy, ξz, ξmax)
 

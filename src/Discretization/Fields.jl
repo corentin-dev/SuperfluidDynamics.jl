@@ -57,10 +57,7 @@ const Field2D{ND,FT,FFT,A,PA,G,P} = Field{2,ND,FT,FFT,A,PA,G,P}
 "Alias for 3D field."
 const Field3D{ND,FT,FFT,A,PA,G,P} = Field{3,ND,FT,FFT,A,PA,G,P}
 
-# Device arrays (CuArray, ...) on several MPI ranks require a GPU-aware MPI
-# implementation: the pencil transposes hand device buffers straight to MPI. With
-# a non-GPU-aware build (e.g. the default MPICH_jll) the first transpose
-# segfaults, so fail early with an actionable message instead.
+# Check early if MPI is not GPU-aware MPI
 function _check_device_mpi(::Type{A}, mpi_topo) where {A}
     A <: Array && return nothing
     MPI.Comm_size(PencilArrays.get_comm(mpi_topo.topo)) > 1 || return nothing

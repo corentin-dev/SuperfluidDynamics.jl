@@ -177,7 +177,7 @@ end
 end
 
 # ==========================================================================
-# Compact  (6th-order periodic compact scheme, port of GPS cdl==0)
+# Compact  (6th-order periodic compact scheme)
 # ==========================================================================
 # Same Fourier-mode accuracy checks as the FD/FFT tests; the compact operator
 # is 6th order, so the same generous TOL_FD bound applies (and is comfortably
@@ -245,7 +245,7 @@ end
 end
 
 # ==========================================================================
-# Compact non-periodic (homogeneous Dirichlet)  -- port of GPS cdl==2
+# Compact non-periodic (homogeneous Dirichlet)
 # ==========================================================================
 # The field is chosen to vanish on the bounded faces (sin(π(x+L/2)/L)), so the
 # homogeneous-Dirichlet boundary conditions are satisfied. The compact operator
@@ -493,10 +493,9 @@ end
 # ==========================================================================
 # On a GPU grid the compact scheme is solved by a dedicated CUDA Thomas kernel
 # (one thread per grid line): periodic axes use the cyclic-corrected Thomas
-# solve, Dirichlet axes the plain Thomas solve. Both agree with the CPU
-# Thomas implementation to machine precision (identical precomputed
-# coefficients). The :spectral backend (Fourier multiplier) remains an
-# explicit alternative for periodic complex fields.
+# solve, Dirichlet axes the plain Thomas solve. The GPU and CPU paths are
+# compared on the same field. The :spectral backend (Fourier multiplier) remains
+# an explicit alternative for periodic complex fields.
 # Skipped when no CUDA device is available.
 @testset "CompactPlan on GPU arrays" begin
     have_gpu = try
@@ -606,7 +605,7 @@ end
 end
 
 # ==========================================================================
-# GP explicit Runge-Kutta (NumModelGPRK) — port of the reference GP_RK4
+# GP explicit Runge-Kutta (NumModelGPRK)
 # ==========================================================================
 # Linear case (β = V = Ω = 0): ψ̂(t) = exp(i·coeffΔ·k²·t) ψ̂(0), an exact phase
 # rotation. A plane wave k=(1,1) has a known exact solution, giving a clean

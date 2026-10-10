@@ -378,10 +378,9 @@ end
 # (`CompactAxisNP`). Same structure as the periodic kernels, but the two end
 # rows use one-sided stencils and the adjacent rows are relaxed (see
 # `compact_setup_np`), and the solve is a plain tridiagonal Thomas (no cyclic
-# correction). The stencil is dtype-agnostic (real or complex fields). This is
-# what makes mixed axes (e.g. x periodic, y bounded) work: the plan dispatch
-# calls `compact1line!(…, p.ax)` and Julia picks the periodic or NP method
-# from the type of `p.ax`.
+# correction). This is what makes mixed axes (e.g. x periodic, y bounded) work:
+# the plan dispatch calls `compact1line!(…, p.ax)` and Julia picks the periodic
+# or NP method from the type of `p.ax`.
 
 function compact1line!(a_out, a_in, n, c::CompactAxisNP)
     a, b = c.a, c.b

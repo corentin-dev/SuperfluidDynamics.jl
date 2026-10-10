@@ -11,7 +11,7 @@
 # transposes that bring the derivative axis to the front, mirroring the CPU
 # dispatch in `derivatives.jl`.
 #
-# The kernels are dtype-agnostic (real or complex fields).
+# Real and complex fields both work here.
 #
 # This file is included from `Plans.jl` inside `try using CUDA ... catch
 # CUDA = nothing end`: when CUDA cannot be loaded, none of it is defined and

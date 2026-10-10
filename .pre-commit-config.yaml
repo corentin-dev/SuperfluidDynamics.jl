@@ -1,0 +1,23 @@
+# Hooks de hygiene. Le hook JuliaFormatter est DECLARE mais non automatique: son
+# implementation est `language: system`, il exige donc un `julia` systeme avec
+# JuliaFormatter importable (mesure ici: `Package JuliaFormatter not found`), et il
+# reformatterait tout le depot sans .JuliaFormatter.toml pour declarer le style.
+#
+# Pourquoi `stages: [manual]` et pas la cle `skip:` en racine: verifie sur ce depot,
+# `skip:` a la racine n'est pas une cle reconnue (`[WARNING] Unexpected key(s) present
+# at root: skip`) et ne saute rien -- le hook tournait quand meme. `stages: [manual]`
+# est le mecanisme qui marche: rien ne s'execute en `pre-commit run`, et le hook reste
+# invocable a la main par `pre-commit run julia-formatter --hook-stage manual`.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+  - repo: https://github.com/domluna/JuliaFormatter.jl
+    rev: v2.14.0
+    hooks:
+      - id: julia-formatter
+        stages: [manual]

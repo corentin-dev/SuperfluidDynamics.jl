@@ -129,9 +129,7 @@ function _compact_cu_2k3!(u, r, n, a, b, s, w, f, t, α, denom, L2, L3)
 end
 
 # --- line drivers -------------------------------------------------------------
-# One thread per line; the sequential Thomas sweep inside a thread makes the
-# kernel memory/latency bound (one pass reads the line, one writes it), which
-# is the best achievable without a parallel (e.g. cyclic-reduction) solve.
+# One thread per grid line.
 
 function _compact_cu_1line_per!(r, u, n, c)
     L = size(u, 2)
@@ -210,8 +208,8 @@ end
 # Plain tridiagonal Thomas (no cyclic correction), one thread per line, with the
 # one-sided boundary stencils and the relaxed rows (i=2, i=n-1) taken from the
 # GPS cdl==2 operator. The row-varying sub/super diagonals and the Thomas
-# factors are uploaded once; the kernel only does the per-call stencil + the
-# two Thomas sweeps. Mirrors the CPU `compact*line!` NP overloads exactly.
+# factors are uploaded once; the kernel does the per-call stencil + the two
+# Thomas sweeps.
 # =============================================================================
 
 @inline function _compact_cu_solve_np2!(r, n, j, s, w, sup)

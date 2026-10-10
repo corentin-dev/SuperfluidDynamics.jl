@@ -116,9 +116,8 @@ The nonlinear term `-P(u × ω)` is treated explicitly (RK4), the viscosity is
 treated implicitly as the exact spectral multiplier `exp(-ν Δt |k|²)` applied
 at each full step. A 2/3-rule dealiasing is applied to the nonlinear term.
 
-This is a port of `NS_model_RK4Imp` from the GPS Fortran code. The 2D and 3D
-cases share the same model: only the dimension-specific kernels (curl, cross,
-dealias) differ.
+The 2D and 3D cases share the same model: only the dimension-specific kernels
+(curl, cross, dealias) differ.
 """
 mutable struct NumModelRK4Imp{F,P,Plan} <: AbstractNumModel{F,P,Plan}
     "field to work on."

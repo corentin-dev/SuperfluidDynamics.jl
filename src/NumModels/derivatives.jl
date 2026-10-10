@@ -357,8 +357,7 @@ end
 
 In-place plain tridiagonal solve for one **non-periodic** compact line `r`
 (already holding the stencil right-hand side), using the precomputed Thomas
-multipliers in `c`. No cyclic correction: the LHS is a plain tridiagonal
-matrix, so two sweeps (forward, backward) are enough.
+multipliers in `c`. The LHS is a plain tridiagonal matrix (no cyclic correction).
 """
 function _compact_solve_np!(r, n, c::CompactAxisNP)
     s, w, sup = c.s, c.w, c.sup
@@ -471,8 +470,7 @@ end
 """$(TYPEDSIGNATURES)
 
 In-place plain tridiagonal solve for one **non-periodic Neumann** compact line
-`r` (same sweeps as the Dirichlet NP solve; the axis type only carries the
-matching precomputed `s`/`w`/`sup`).
+`r`.
 """
 function _compact_solve_neu!(r, n, c::CompactAxisNeu)
     s, w, sup = c.s, c.w, c.sup

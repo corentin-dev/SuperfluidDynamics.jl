@@ -1,19 +1,25 @@
 """
-    PotentialTaylorGreen{F} <: AbstractPotential{F}
+    PotentialExternalVelocity
 
-Represents a potential used for external velocities ``u_\\text{adv}``. It can be used for [`GrossPitaevskiiParameters`](@ref).
-It has the following form:
+Potential of an imposed external advection velocity ``u_\\text{adv}``, for
+[`GrossPitaevskiiParameters`](@ref). The potential stored on the field is
+
+```math
+V = |u_\\text{adv}|^2 / α
+```
+
+with `α` a constructor argument (default `1`): the normalisation is the caller's
+choice.
 
 The potential has the following informations:
 
 - `f`: the field on which the potential acts,
 - `V`: a potential field (real),
-- `uadvx`: a vector field,
-- `uadvy`: a vector field,
-- `uadvz`: a vector field (for 3D only).
+- `uadvx`, `uadvy`: vector fields,
+- `uadvz`: vector field (3D only; empty in 2D).
 
-Example
-=======
+# Example
+
 ```jldoctest
 julia> grid = Grid((128,128), ((-12,12), (-12,12)));
 julia> field = Field(grid, ComplexField());

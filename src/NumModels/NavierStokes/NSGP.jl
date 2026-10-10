@@ -629,23 +629,16 @@ end
 """
     calc_nlk_Lap_GP_coupled!(n, phihat, out)
 
-GP (superfluid) increment of the coupled model, port of `calc_nlk_Lap_GP`.
-`phihat` is the (spectral) wavefunction of the current RK stage; `out` (spectral,
-last-pencil) receives `Δψ̂` **including the time step `Δt`** (unlike the NS
-increment). The coupling quantities (`uadv_phys`, `fns_phys`, `gp_phys_c` = V_xm)
-must have been set by a preceding `compute_u_adv_Fns!`.
+GP (superfluid) increment of the coupled model. `phihat` is the (spectral)
+wavefunction of the current RK stage; `out` (spectral, last-pencil) receives
+`Δψ̂` **including the time step `Δt`** (unlike the NS increment). The coupling
+quantities (`uadv_phys`, `fns_phys`, `gp_phys_c` = V_xm) must have been set by a
+preceding `compute_u_adv_Fns!`.
 
-Port of the Fortran layout: ``ψ = IFFT(ψ̂)``, ``Rx+Ry = i (u_adv·∇ψ)`` (physical),
-``|ψ|²`` dealiased, the three physical terms
-``temp_1 = (-V_xm-β|ψ|²)ψ + Rx+Ry``,
-``temp_2 = (-V_xm-β)ψ + Rx+Ry``,
-``temp_3 = (β-β|ψ|²)ψ``, FFTed, then
-- no dissipation: `out = Δt·i·((μ+α|k|²)ψ̂ + temp_1̂)`;
-- with η_D: `out = Δt·i·(μψ̂ + (1-iη_D)(α|k|²ψ̂ + temp_3̂) + i·dissip·ψ̂ + temp_2̂)`,
-
-with the mass-correction ``μ = -Σ temp_2̂ ψ̄̂ / Σ|ψ̂|²`` and the dissipation factor
-``dissip = η_D Σ(α|k|²ψ̂+temp_3̂) ψ̄̂ / Σ|ψ̂|²`` (Parseval ratios, computed as
-MPI-global sums). `phihat` is not modified.
+With `η_D = 0` the increment carries the mass-correction `μ`; with `η_D ≠ 0` it
+also carries the dissipation factor `dissip`, the linear term being multiplied by
+`(1 - i η_D)`. Both are Parseval ratios computed as MPI-global sums. `phihat` is
+not modified.
 """
 function calc_nlk_Lap_GP_coupled!(n::NumModelNSGP, phihat, out)
     p = n.param
@@ -719,8 +712,7 @@ end
 """
     calc_nlk_NS_coupled!(n, uhat, out)
 
-Normal-fluid (NS) increment of the coupled model, port of `calc_nlk_NS`.
-`uhat` is the (spectral) normal velocity of the current RK stage; `out`
+Normal-fluid (NS) increment of the coupled model. `uhat` is the (spectral) normal velocity of the current RK stage; `out`
 (spectral, last-pencil) receives ``P(u×ω + F_SN/ρ_n)`` (dealiased and
 Helmholtz-projected). **The time step is NOT applied here** — it is applied at
 the update together with the implicit viscosity factor. The friction force

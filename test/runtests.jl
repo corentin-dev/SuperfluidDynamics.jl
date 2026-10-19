@@ -2,17 +2,13 @@ using Test
 using SuperfluidDynamics
 using PencilArrays: localgrid
 
-# Relative error helper: max|a-b| / max|b|
 relerr(a, b) = abs(maximum(abs.(a .- b))) / abs(maximum(abs.(b)))
 
-# Tolerances.
-# FFT is spectral -> exact at machine precision for resolved modes.
-# FD is 6th order -> error ~ O((k*Δx)^6); keep a generous bound that still
-# catches factor-of-2 and gross layout errors.
+# FFT is spectral (exact on resolved modes); FD is 6th order, so the bound is loose
+# but catches factor-2 and layout errors.
 const TOL_FFT = 1e-10
 const TOL_FD  = 1e-3
 
-# --- helpers to lay out a single Fourier mode on a grid ---
 function set_mode_2d!(field, m, n_)
     X = reshape(vec(field.x), :, 1); Y = reshape(vec(field.y), 1, :)
     Lx, Ly = field.g.Lx, field.g.Ly
@@ -30,9 +26,6 @@ function set_mode_3d!(field, m, n_, p)
     return kx, ky, kz
 end
 
-# ==========================================================================
-# 2D FFT  (rotation=true)  -- the GP/BEC 2D path
-# ==========================================================================
 @testset "2D FFT derivatives (rotation=true)" begin
     field = Field(Grid((64, 64), ((-12, 12), (-12, 12))), ComplexField())
     X = reshape(vec(field.x), :, 1); Y = reshape(vec(field.y), 1, :)
@@ -49,9 +42,6 @@ end
     @test relerr(gf.ry, -X .* gf.dy)   < TOL_FFT
 end
 
-# ==========================================================================
-# 3D FFT  (rotation=true)  -- the GP/BEC 3D path
-# ==========================================================================
 @testset "3D FFT derivatives (rotation=true)" begin
     field = Field(Grid((48, 48, 48), ((-12, 12), (-12, 12), (-12, 12))), ComplexField())
     X = reshape(vec(field.x), :, 1, 1); Y = reshape(vec(field.y), 1, :, 1)
@@ -71,9 +61,6 @@ end
     @test relerr(gf.ry, -X .* gf.dy)   < TOL_FFT
 end
 
-# ==========================================================================
-# 2D FFT  (rotation=false)  -- GradientField2D
-# ==========================================================================
 @testset "2D FFT derivatives (rotation=false)" begin
     field = Field(Grid((64, 64), ((-12, 12), (-12, 12))), ComplexField())
     kx, ky = set_mode_2d!(field, 2, 3)
@@ -87,9 +74,6 @@ end
     @test relerr(gf.ddy, -ky^2 * ϕ)   < TOL_FFT
 end
 
-# ==========================================================================
-# 3D FFT  (rotation=false)  -- GradientField3D
-# ==========================================================================
 @testset "3D FFT derivatives (rotation=false)" begin
     field = Field(Grid((48, 48, 48), ((-12, 12), (-12, 12), (-12, 12))), ComplexField())
     kx, ky, kz = set_mode_3d!(field, 2, 3, 4)
@@ -105,9 +89,6 @@ end
     @test relerr(gf.ddz, -kz^2 * ϕ)   < TOL_FFT
 end
 
-# ==========================================================================
-# 2D FD  (rotation=true)  -- the BEC_2D_DF path
-# ==========================================================================
 @testset "2D FD derivatives (rotation=true)" begin
     field = Field(Grid((128, 128), ((-12, 12), (-12, 12))), ComplexField())
     X = reshape(vec(field.x), :, 1); Y = reshape(vec(field.y), 1, :)
@@ -124,9 +105,6 @@ end
     @test relerr(gf.ry, -X .* gf.dy)   < TOL_FD
 end
 
-# ==========================================================================
-# 2D FD  (rotation=false)  -- GradientField2D
-# ==========================================================================
 @testset "2D FD derivatives (rotation=false)" begin
     field = Field(Grid((128, 128), ((-12, 12), (-12, 12))), ComplexField())
     kx, ky = set_mode_2d!(field, 2, 3)
@@ -140,9 +118,6 @@ end
     @test relerr(gf.ddy, -ky^2 * ϕ)   < TOL_FD
 end
 
-# ==========================================================================
-# 3D FD  (rotation=true)
-# ==========================================================================
 @testset "3D FD derivatives (rotation=true)" begin
     field = Field(Grid((64, 64, 64), ((-12, 12), (-12, 12), (-12, 12))), ComplexField())
     kx, ky, kz = set_mode_3d!(field, 2, 3, 4)
@@ -158,9 +133,6 @@ end
     @test relerr(gf.ddz, -kz^2 * ϕ)   < TOL_FD
 end
 
-# ==========================================================================
-# 3D FD  (rotation=false)  -- GradientField3D
-# ==========================================================================
 @testset "3D FD derivatives (rotation=false)" begin
     field = Field(Grid((64, 64, 64), ((-12, 12), (-12, 12), (-12, 12))), ComplexField())
     kx, ky, kz = set_mode_3d!(field, 2, 3, 4)
@@ -176,12 +148,7 @@ end
     @test relerr(gf.ddz, -kz^2 * ϕ)   < TOL_FD
 end
 
-# ==========================================================================
-# Compact  (6th-order periodic compact scheme)
-# ==========================================================================
-# Same Fourier-mode accuracy checks as the FD/FFT tests; the compact operator
-# is 6th order, so the same generous TOL_FD bound applies (and is comfortably
-# met).
+# Compact periodic: 6th order, so TOL_FD applies.
 @testset "2D compact derivatives (rotation=true)" begin
     field = Field(Grid((128, 128), ((-12, 12), (-12, 12))), ComplexField())
     X = reshape(vec(field.x), :, 1); Y = reshape(vec(field.y), 1, :)
@@ -244,14 +211,8 @@ end
     @test relerr(gf.ddz, -kz^2 * ϕ)   < TOL_FD
 end
 
-# ==========================================================================
-# Compact non-periodic (homogeneous Dirichlet)
-# ==========================================================================
-# The field is chosen to vanish on the bounded faces (sin(π(x+L/2)/L)), so the
-# homogeneous-Dirichlet boundary conditions are satisfied. The compact operator
-# is 6th order in the interior; the first/last two points are a decaying
-# boundary layer, so the derivatives are compared on an interior sub-block
-# (2 points trimmed on each bounded face).
+# Compact Dirichlet: boundary layer on the first/last two points, so the comparison
+# trims 2 per bounded face.
 @testset "2D compact Dirichlet (non-periodic) derivatives" begin
     n, L = 64, 4.0
     c = π / L
@@ -285,9 +246,7 @@ end
     @assert isa(plan.ay, SuperfluidDynamics.CompactAxisNP)    # y -> Dirichlet
     SuperfluidDynamics.computeDerivatives!(gf, plan, field.ϕ)
     I = 3:(n - 2)
-    # x is periodic and exact, and ∂x does not touch y -> exact everywhere
     @test relerr(gf.dx, 1im * kp * sx * sy) < TOL_FD
-    # y is Dirichlet -> compare in the y interior (all x)
     @test relerr(parent(gf.dy)[:, I],  (c * sx * cy_)[:, I])    < TOL_FD
     @test relerr(parent(gf.ddy)[:, I], (-c^2 * sx * sy)[:, I])  < TOL_FD
 end
@@ -313,14 +272,8 @@ end
     @test relerr(parent(gf.ddz)[I, I, I], (-c^2 * sx .* sy .* sz)[I, I, I])  < TOL_FD
 end
 
-# ==========================================================================
-# Compact non-periodic (homogeneous Neumann) -- even-mirror closure
-# ==========================================================================
-# The grid is periodic-style (the last point is x_n = L - dx, not L), so the
-# mirror is about the first/last GRID POINTS: the test field must be even about
-# x = 0 and x = x_n, i.e. cos(c x) with c = 2π/x_n. Then the exact derivative is
-# exact everywhere, including the walls (the 1st derivative vanishes there by
-# the Neumann condition, the 2nd is mirrored).
+# Compact Neumann, even mirror: the grid is periodic-style (last point L-dx, not L), so
+# the mirror is about the GRID POINTS — field cos(c x), c = 2π/x_n.
 @testset "2D compact Neumann (non-periodic) derivatives" begin
     n, L = 64, 4.0
     field = Field(Grid((n, n), ((0.0, L), (0.0, L))), ComplexField())
@@ -339,7 +292,6 @@ end
     # the Neumann condition itself: the 1st derivative vanishes on the walls
     @test maximum(abs.(parent(gf.dx)[1, :]))  < 1e-12
     @test maximum(abs.(parent(gf.dx)[end, :])) < 1e-12
-    # 6th-order convergence of the interior error under refinement
     errs = Float64[]
     for m in (64, 128)
         gm = Field(Grid((m, m), ((0.0, L), (0.0, L))), ComplexField())
@@ -367,10 +319,8 @@ end
     @test isa(plan.ax, SuperfluidDynamics.CompactAxisNeu)   # x -> Neumann
     @test isa(plan.ay, SuperfluidDynamics.CompactAxis)      # y -> periodic
     SuperfluidDynamics.computeDerivatives!(gf, plan, field.ϕ)
-    # x is Neumann: exact everywhere, including the walls
     @test relerr(parent(gf.dx),  (-c * sin.(c * X)) * exp.(1im * kp * Y))  < TOL_FD
     @test relerr(parent(gf.ddx), (-c^2 * cos.(c * X)) * exp.(1im * kp * Y)) < TOL_FD
-    # y is periodic and exact, and ∂y does not touch x -> exact everywhere
     @test relerr(parent(gf.dy),  cos.(c * X) .* (1im * kp * exp.(1im * kp * Y)))  < TOL_FD
     @test relerr(parent(gf.ddy), cos.(c * X) .* (-(kp^2) * exp.(1im * kp * Y))) < TOL_FD
 end
@@ -396,20 +346,10 @@ end
     @test relerr(parent(gf.ddz), cos.(c * X) .* cos.(c * Y) .* (-c^2 * cos.(c * Z))) < TOL_FD
 end
 
-# ==========================================================================
-# ODD grid sizes
-# ==========================================================================
-# Every other testset in this file uses an EVEN resolution (16, 20, 24, 28, 32, 36,
-# 40, 48, 64, 96, 128, 256). Nothing here therefore pins the code against an odd
-# number of points per axis, which is the classic failure mode for hand-written
-# index arithmetic (spectral mode layout, tridiagonal solves, mirrored closure).
-# Setups are the ones above, only `n` changes, and so are the tolerances: the same
-# TOL_FFT / TOL_FD already used for the even grids. That reuse is a measurement, not an
-# assumption: at these resolutions the odd error was checked to land under the same
-# bound as the even one (58/58, Julia 1.12, CPU).
+# Odd grid sizes: pins index arithmetic (spectral layout, tridiagonal solves, mirror
+# closure) against an odd point count.
 @testset "derivatives on odd grid sizes (FFT, FD, compact: periodic/Dirichlet/Neumann)" begin
     for n in (29, 31, 33)
-        # --- 2D FFT: exact spectral, parity must be irrelevant ---
         field = Field(Grid((n, n), ((-12, 12), (-12, 12))), ComplexField())
         X = reshape(vec(field.x), :, 1); Y = reshape(vec(field.y), 1, :)
         kx, ky = set_mode_2d!(field, 2, 3)
@@ -423,7 +363,6 @@ end
         @test relerr(gf.rx,  Y .* gf.dx)   < TOL_FFT
         @test relerr(gf.ry, -X .* gf.dy)   < TOL_FFT
 
-        # --- 2D FD ---
         field = Field(Grid((n, n), ((-12, 12), (-12, 12))), ComplexField())
         kx, ky = set_mode_2d!(field, 2, 3)
         gf = GradientField(field; rotation=false)
@@ -432,7 +371,6 @@ end
         @test relerr(gf.dx,  1im * kx * ϕ) < TOL_FD
         @test relerr(gf.ddx, -kx^2 * ϕ)   < TOL_FD
 
-        # --- 2D compact, periodic ---
         field = Field(Grid((n, n), ((-12, 12), (-12, 12))), ComplexField())
         kx, ky = set_mode_2d!(field, 2, 3)
         gf = GradientField(field; rotation=false)
@@ -441,7 +379,6 @@ end
         @test relerr(gf.dx,  1im * kx * ϕ) < TOL_FD
         @test relerr(gf.ddx, -kx^2 * ϕ)   < TOL_FD
 
-        # --- 2D compact, Dirichlet then Neumann on both axes ---
         Ld = 4.0; c = π / Ld
         field = Field(Grid((n, n), ((-Ld/2, Ld/2), (-Ld/2, Ld/2))), ComplexField())
         sx = sin.(c * (reshape(field.x, :, 1) .+ Ld/2)); cx_ = cos.(c * (reshape(field.x, :, 1) .+ Ld/2))
@@ -462,12 +399,10 @@ end
         SuperfluidDynamics.computeDerivatives!(gf, Plan(field; t=SuperfluidDynamics.CompactPlan(bcs=(2, 2))), field.ϕ)
         @test relerr(parent(gf.dx), (-cn * sin.(cn * X)) * cos.(cn * Y)) < TOL_FD
         @test relerr(parent(gf.ddx), (-cn^2 * cos.(cn * X)) * cos.(cn * Y)) < TOL_FD
-        # the Neumann condition itself has to hold on an odd grid too
         @test maximum(abs.(parent(gf.dx)[1, :])) < 1e-12
         @test maximum(abs.(parent(gf.dx)[end, :])) < 1e-12
     end
 
-    # --- 3D FFT and compact, odd in all three axes (n^3 kept small on purpose) ---
     for n in (29, 31)
         field = Field(Grid((n, n, n), ((-12, 12), (-12, 12), (-12, 12))), ComplexField())
         kx, ky, kz = set_mode_3d!(field, 2, 3, 4)
@@ -488,15 +423,8 @@ end
     end
 end
 
-# ==========================================================================
-# CompactPlan on GPU
-# ==========================================================================
-# On a GPU grid the compact scheme is solved by a dedicated CUDA Thomas kernel
-# (one thread per grid line): periodic axes use the cyclic-corrected Thomas
-# solve, Dirichlet axes the plain Thomas solve. The GPU and CPU paths are
-# compared on the same field. The :spectral backend (Fourier multiplier) remains
-# an explicit alternative for periodic complex fields.
-# Skipped when no CUDA device is available.
+# GPU compact: CUDA Thomas, one thread per grid line (cyclic-corrected on periodic
+# axes, plain on Dirichlet). Skipped without CUDA.
 @testset "CompactPlan on GPU arrays" begin
     have_gpu = try
         using CUDA
@@ -508,7 +436,6 @@ end
         using CUDA
         CUDA.device!(0)
 
-        # --- 2D: GPU CUDA Thomas kernel vs CPU Thomas, non-constant field ---
         nx, ny = 32, 24
 
         fc = Field(Grid((nx, ny), ((-4, 4), (-4, 4))), ComplexField())
@@ -534,7 +461,6 @@ end
         @test gpu_rel(gfg.dy, gfc.dy)  < 1e-10
         @test gpu_rel(gfg.ddy, gfc.ddy) < 1e-10
 
-        # --- 2D: RealField works with the CUDA Thomas backend ---
         fr = Field(Grid((nx, ny), ((-4, 4), (-4, 4)); array_type=CuArray), RealField())
         pr = Plan(fr; t=SuperfluidDynamics.CompactPlan())
         @test isa(pr, SuperfluidDynamics.PlanCompactGPU2D)
@@ -550,7 +476,6 @@ end
         @test gpu_rel(gfr.dx, gfc_r.dx) < 1e-10
         @test gpu_rel(gfr.ddy, gfc_r.ddy) < 1e-10
 
-        # --- 3D: GPU CUDA Thomas runs the full x/y/z chain, non-constant ---
         N3 = 16
         fg3 = Field(Grid((N3, N3, N3), ((-4, 4), (-4, 4), (-4, 4)); array_type=CuArray),
                     ComplexField())
@@ -560,7 +485,6 @@ end
         gfg3 = GradientField(fg3; rotation=false)
         SuperfluidDynamics.computeDerivatives!(gfg3, pg3, fg3.ϕ)
         CUDA.synchronize()
-        # Compare against the CPU Thomas implementation on the same field.
         fc3 = Field(Grid((N3, N3, N3), ((-4, 4), (-4, 4), (-4, 4))), ComplexField())
         fc3.ϕ .= exp.(1im * (0.3 .* fc3.x .+ 0.5 .* fc3.y .+ 0.7 .* fc3.z))
         pc3 = Plan(fc3; t=SuperfluidDynamics.CompactPlan())
@@ -573,11 +497,6 @@ end
         @test gpu_rel(gfg3.ddy, gfc3.ddy) < 1e-10
         @test gpu_rel(gfg3.ddz, gfc3.ddz) < 1e-10
 
-        # --- 2D: GPU CUDA kernel for Dirichlet (non-periodic) axes vs CPU ---
-        # Same one-sided compact operator as the CPU path (plain Thomas, no
-        # cyclic correction). A Dirichlet field (sin, zero on the walls) is
-        # differentiated on GPU and CPU; the two must agree to machine
-        # precision (same coefficients, same kernel semantics).
         cgx, cgy = π / 8, π / 8   # sin(π(x+4)/8) vanishes at x=±4
         fd = Field(Grid((nx, ny), ((-4, 4), (-4, 4)); array_type=CuArray), ComplexField())
         fd.ϕ .= sin.(cgx .* (fd.x .+ 4)) .* sin.(cgy .* (fd.y .+ 4))
@@ -597,19 +516,13 @@ end
         @test gpu_rel(gfd.ddx, gcd.ddx) < 1e-10
         @test gpu_rel(gfd.ddy, gcd.ddy) < 1e-10
 
-        # --- Spectral backend still available (complex fields only) ---
         pgs = Plan(fg; t=SuperfluidDynamics.CompactPlan(backend=:spectral))
         @test isa(pgs, SuperfluidDynamics.PlanCompactFFT2D)
         @test_throws ErrorException Plan(fr; t=SuperfluidDynamics.CompactPlan(backend=:spectral))
     end
 end
 
-# ==========================================================================
-# GP explicit Runge-Kutta (NumModelGPRK)
-# ==========================================================================
-# Linear case (β = V = Ω = 0): ψ̂(t) = exp(i·coeffΔ·k²·t) ψ̂(0), an exact phase
-# rotation. A plane wave k=(1,1) has a known exact solution, giving a clean
-# convergence-order check for RK1/RK2/RK4 and a norm check.
+# Linear case (β = V = Ω = 0): ψ̂(t) = exp(i·coeffΔ·k²·t) ψ̂(0), an exact phase rotation.
 @testset "GP explicit RK: plane-wave order and norm preservation (2D)" begin
     grid = Grid((32, 32), ((-2π, 2π), (-2π, 2π)))
     coeffΔ = -0.5
@@ -638,14 +551,12 @@ end
         e_f, n_f = run(stepper, 80)
         order = log2(e_c / e_f)
         @test lo < order < hi
-        @test abs(n_f - 1.0) < 5e-3          # phase rotation preserves the norm
+        @test abs(n_f - 1.0) < 5e-3
         @test e_f > 0.0                      # the fine run is not exact (no trivial pass)
     end
 end
 
-# Nonlinear case (β > 0): the mass ∫|ψ|² is conserved by the GP equation; the
-# explicit RK integrator must preserve it (up to the truncation error) on a
-# Gaussian initial state.
+# Nonlinear (β > 0): ∫|ψ|² is conserved by GP, so the integrator must preserve it.
 @testset "GP explicit RK: nonlinear mass conservation (2D)" begin
     grid = Grid((32, 32), ((-2π, 2π), (-2π, 2π)))
     function mass_rel(stepper, dt, T, β)
@@ -666,8 +577,8 @@ end
     @test mass_rel("RK4", 0.004, 0.2, 2.0) < 1e-7
 end
 
-# Temporal order for each 2/3-filter placement. Only β > 0 separates them: with
-# β = V = Ω = 0 the term to filter is zero, so no placement can show up.
+# Temporal order per 2/3-filter placement: only β > 0 separates them (otherwise the
+# term to filter is zero).
 @testset "GP explicit RK: 2/3-filter placement and nonlinear temporal order (2D)" begin
     grid = Grid((32, 32), ((-2π, 2π), (-2π, 2π)))
     T = 0.1
@@ -700,12 +611,8 @@ end
                                             1e-3, 1, 1; filter=:kmax)
 end
 
-# Imaginary-time solvers: in the strong-interaction (Thomas-Fermi) regime, the
-# ground state of the 2D harmonic trap V = (x² + y²)/2 is analytic: the TF
-# chemical potential is μ_TF = √(β/π) and the TF energy E_TF = 2 μ_TF / 3
-# (the residual few-per-cent difference with the numerical state is the kinetic
-# correction, which TF neglects). Each imaginary-time solver must decrease the
-# energy from a generic (Gaussian) initial state and reach that value.
+# Thomas-Fermi, V = (x² + y²)/2: μ_TF = √(β/π), E_TF = 2 μ_TF / 3; the gap with the
+# numerical state is the kinetic correction TF drops.
 @testset "GP imaginary time: Thomas-Fermi ground state (2D)" begin
     function ground_state(model; N=48, L=10.0, β=400.0, Δt=0.02, niter=1500)
         grid = Grid((N, N), ((-L, L), (-L, L)))
@@ -728,16 +635,14 @@ end
     for model in (NumModelBackwardEuler, NumModelBackwardEulerNoPrecond,
                   NumModelCrankNicolson, NumModelCrankNicolsonQuasiNewton)
         e0, e1, dE, mass = ground_state(model)
-        @test e1 < e0            # imaginary time decreases the energy
-        @test dE < 0.03          # reaches the analytic Thomas-Fermi energy
+        @test e1 < e0
+        @test dE < 0.03
         @test abs(mass - 1.0) < 1e-8   # the norm constraint is preserved
     end
 end
 
-# Splitting schemes: on a periodic box with V = 0 and Ω = 0, two successive
-# refinements of the time step give the observed order (1 for Lie, 2 for
-# Strang). The exact phase flows make the mass conservation exact, which
-# discriminates the splitting from a generic explicit integrator.
+# Splitting order on a periodic box with V = Ω = 0, by step refinement: 1 for Lie,
+# 2 for Strang.
 @testset "GP splitting: time order and exact mass conservation (2D)" begin
     function run_split(order, nsteps; N=32, L=2π, β=20.0, T=0.2)
         Δt = T / nsteps
@@ -765,9 +670,6 @@ end
     end
 end
 
-# ==========================================================================
-# 3D vector field: FFT round-trip (NS velocity field, ndims=3)
-# ==========================================================================
 @testset "3D vector FFT round-trip" begin
     grid = Grid((32, 24, 40), ((-4, 4), (-5, 5), (-3, 3)))
     field = Field(grid, ComplexField(); ndims=3)
@@ -779,9 +681,8 @@ end
     field.uy .= cos.(ky*Y) .* sin.(kz*Z)
     field.uz .= sin.(kz*Z)
     plan = Plan(field)
-    # mul_all! outputs in the last direction's layout (pen_z for 3D); ldiv_all!
-    # takes that back to pen_x. So FFT forward into uz_hat (pen_z), inverse
-    # into a fresh pen_x field.
+    # mul_all! outputs in the last-pencil layout (pen_z for 3D), ldiv_all! takes that
+# back to pen_x.
     SuperfluidDynamics.mul_all!(plan.uz_hat, plan, field.u)
     back = SuperfluidDynamics.similar_data(field.u)
     SuperfluidDynamics.ldiv_all!(back, plan, plan.uz_hat)
@@ -790,23 +691,17 @@ end
     @test relerr(back[3], field.uz) < TOL_FFT
 end
 
-# ==========================================================================
-# 3D curl (ω = ∇ × u) via FFT -- used by the Navier-Stokes solver
-# ==========================================================================
 @testset "3D curl (FFT)" begin
-    # Non-cubic grid with different lengths, so an axis misalignment
-    # (x/y/z swapped) would show up as an O(1) error.
+    # Non-cubic box: an axis swap would show up as an O(1) error.
     grid = Grid((32, 24, 40), ((-4, 4), (-5, 5), (-3, 3)))
     field = Field(grid, ComplexField(); ndims=3)
     Lx, Ly, Lz = grid.Lx, grid.Ly, grid.Lz
     kx, ky, kz = 2π/Lx, 2π/Ly, 2π/Lz
     X = reshape(vec(field.x), :, 1, 1); Y = reshape(vec(field.y), 1, :, 1)
     Z = reshape(vec(field.z), 1, 1, :)
-    # u = (cos(ky y), sin(kz z), sin(kx x))
     field.ux .= cos.(ky*Y)
     field.uy .= sin.(kz*Z)
     field.uz .= sin.(kx*X)
-    # ω = curl u = (∂y uz - ∂z uy, ∂z ux - ∂x uz, ∂x uy - ∂y ux)
     ωx_ref = -kz * cos.(kz*Z)
     ωy_ref = -kx * cos.(kx*X)
     ωz_ref =  ky * sin.(ky*Y)
@@ -820,9 +715,6 @@ end
     @test relerr(ω[3], ωz_ref) < TOL_FFT
 end
 
-# ==========================================================================
-# norm / normalize!
-# ==========================================================================
 @testset "norm and normalize!" begin
     field = Field(Grid((64, 64), ((-12, 12), (-12, 12))), ComplexField())
     Lx, Ly = field.g.Lx, field.g.Ly
@@ -832,11 +724,6 @@ end
     @test norm(field) ≈ 1.0
 end
 
-# ==========================================================================
-# Navier-Stokes 3D
-# ==========================================================================
-# spectral divergence of a velocity given as a Vector{PencilArray} in the
-# last-pencil layout:  div = max |imag(i k · û)|. Dimension-agnostic (2D/3D).
 function div_max(n, u_hat)
     gridξ = SuperfluidDynamics.spectral_grid(n.plan)
     d = similar(u_hat[1])
@@ -847,9 +734,6 @@ function div_max(n, u_hat)
     return maximum(abs.(imag.(parent(d))))
 end
 
-# ==========================================================================
-# Helmholtz projector: removes the divergence, idempotent
-# ==========================================================================
 @testset "NS projector" begin
     grid = Grid((32, 24, 40), ((-4, 4), (-5, 5), (-6, 6)))
     field = Field(grid, ComplexField(); ndims=3)
@@ -860,7 +744,7 @@ end
     end
     SuperfluidDynamics.mul_all!(n.u_hat, n.plan, field.u)
     d0 = div_max(n, n.u_hat)
-    @test d0 > 10  # a random field is not divergence-free
+    @test d0 > 10
     SuperfluidDynamics.project!(n, n.u_hat)
     @test div_max(n, n.u_hat) < 1e-10 * d0  # divergence removed
     # idempotency: projecting again changes nothing (to roundoff)
@@ -870,9 +754,6 @@ end
           1e-12 * maximum(abs.(parent(u_before)))
 end
 
-# ==========================================================================
-# taylor_green!: periodic and exactly divergence-free
-# ==========================================================================
 @testset "NS taylor_green initialisation" begin
     grid = Grid((32, 24, 40), ((-4, 4), (-5, 5), (-6, 6)))
     field = Field(grid, ComplexField(); ndims=3)
@@ -882,11 +763,7 @@ end
     @test div_max(n, n.u_hat) < 1e-10
 end
 
-# ==========================================================================
-# taylor_green! (3D): energy matches the closed-form analytic value
-# E = A² Lx Ly Lz / 16 · (1 + (kx/ky)²)   (uz ≡ 0)
-# Validates the energy normalisation (½, Δx·Δy·Δz) and the kx/ky scaling.
-# ==========================================================================
+# taylor_green! (3D) energy, closed form E = A² Lx Ly Lz / 16 · (1 + (kx/ky)²)
 @testset "NS taylor_green energy (3D)" begin
     for (nx, ny, nz, rng) in ((32, 24, 40, ((-4, 4), (-5, 5), (-6, 6))),
                               (64, 48, 56, ((-3, 3), (-4, 4), (-5, 5))))
@@ -904,17 +781,12 @@ end
     end
 end
 
-# ==========================================================================
-# Beltrami mode: u×ω = 0 holds identically, so u(t) = u(0) exp(-ν|k|²t)
-# is the EXACT solution of the semi-implicit scheme (the implicit viscosity
-# multiplier is exact). Validates the whole RHS pipeline at once.
-# ==========================================================================
+# Beltrami mode: u×ω = 0 identically, so u(t) = u(0) exp(-ν|k|²t) is exact here.
 @testset "NS Beltrami exact decay" begin
     grid = Grid((32, 24, 40), ((-4, 4), (-5, 5), (-6, 6)))
     Lx, Ly, Lz = grid.Lx, grid.Ly, grid.Lz
     kx, ky, kz = 2π / Lx, 2π / Ly, 2π / Lz
     knorm = sqrt(kx^2 + ky^2 + kz^2)
-    # unit vector perpendicular to k
     k̂ = [kx, ky, kz] / knorm
     b = [k̂[1], 0.3, k̂[3]]
     b .-= (sum(b .* k̂)) * k̂
@@ -949,11 +821,7 @@ end
     end
 end
 
-# ==========================================================================
-# RK4 order: with ν=0 the semi-implicit step is a plain RK4 applied to the
-# nonlinear term, so the global error must converge as Δt⁴. The amplitude is
-# chosen large enough that the O(Δt⁵) error is above the roundoff floor.
-# ==========================================================================
+# RK4 order: at ν=0 the semi-implicit step is plain RK4 on the nonlinear term.
 @testset "NS RK4 convergence order" begin
     grid = Grid((32, 24, 40), ((-4, 4), (-5, 5), (-6, 6)))
     A = 2.0
@@ -974,7 +842,7 @@ end
         return [parent(field.ux), parent(field.uy), parent(field.uz)]
     end
 
-    ref = run(t_final / 1000)   # reference run (error ~128× smaller)
+    ref = run(t_final / 1000)
     e1 = run(t_final / 4)
     e2 = run(t_final / 8)
     e3 = run(t_final / 16)
@@ -988,10 +856,7 @@ end
     @test 3.8 < o2 < 4.2
 end
 
-# ==========================================================================
-# Taylor-Green time integration: energy strictly decays (dE/dt ≤ 0),
-# the divergence stays at roundoff level, and there is no blow-up.
-# ==========================================================================
+# Taylor-Green: energy decays (dE/dt ≤ 0), divergence at roundoff, no blow-up.
 @testset "NS Taylor-Green time integration" begin
     grid = Grid((32, 24, 40), ((-4, 4), (-5, 5), (-6, 6)))
     field = Field(grid, ComplexField(); ndims=3)
@@ -1013,11 +878,8 @@ end
     @test Emax < 1.01 * E0  # no blow-up
 end
 
-# ==========================================================================
 # Navier-Stokes 2D
-# ==========================================================================
 # 2D vector field: FFT round-trip (NS velocity field, ndims=2)
-# ==========================================================================
 @testset "2D vector FFT round-trip" begin
     grid = Grid((32, 24), ((-4, 4), (-5, 5)))
     field = Field(grid, ComplexField(); ndims=2)
@@ -1036,9 +898,6 @@ end
     @test relerr(back[2], field.uy) < TOL_FFT
 end
 
-# ==========================================================================
-# Helmholtz projector (2D): removes the divergence, idempotent
-# ==========================================================================
 @testset "NS projector 2D" begin
     grid = Grid((32, 24), ((-4, 4), (-5, 5)))
     field = Field(grid, ComplexField(); ndims=2)
@@ -1049,7 +908,7 @@ end
     end
     SuperfluidDynamics.mul_all!(n.u_hat, n.plan, field.u)
     d0 = div_max(n, n.u_hat)
-    @test d0 > 1  # a random field is not divergence-free
+    @test d0 > 1
     SuperfluidDynamics.project!(n, n.u_hat)
     @test div_max(n, n.u_hat) < 1e-10 * d0  # divergence removed
     # idempotency: projecting again changes nothing (to roundoff)
@@ -1059,9 +918,7 @@ end
           1e-12 * maximum(abs.(parent(u_before)))
 end
 
-# ==========================================================================
 # taylor_green! (2D): periodic and exactly divergence-free
-# ==========================================================================
 @testset "NS taylor_green initialisation 2D" begin
     grid = Grid((32, 24), ((-4, 4), (-5, 5)))
     field = Field(grid, ComplexField(); ndims=2)
@@ -1071,11 +928,7 @@ end
     @test div_max(n, n.u_hat) < 1e-10
 end
 
-# ==========================================================================
-# taylor_green! (2D): energy matches the closed-form analytic value
-# E = A² Lx Ly / 8 · (1 + (kx/ky)²)
-# Validates the energy normalisation (½, Δx·Δy) and the kx/ky scaling.
-# ==========================================================================
+# taylor_green! (2D) energy, closed form E = A² Lx Ly / 8 · (1 + (kx/ky)²)
 @testset "NS taylor_green energy (2D)" begin
     for (nx, ny, rng) in ((32, 24, ((-4, 4), (-5, 5))),
                           (64, 48, ((-3, 3), (-4, 4))))
@@ -1093,12 +946,7 @@ end
     end
 end
 
-# ==========================================================================
-# 2D shear-flow exact decay: u = (U0 sin(ky y), 0) is divergence-free and its
-# projected nonlinear term P(u × ω) is identically zero, so u(t) = u(0)·e^{-νky²t}
-# is the EXACT solution of the semi-implicit scheme (the implicit viscosity
-# multiplier is exact). Validates the whole 2D RHS pipeline at once.
-# ==========================================================================
+# 2D shear u = (U0 sin(ky y), 0): P(u × ω)=0, so u(t)=u(0)·e^{-νky²t} is exact here.
 @testset "NS 2D shear-flow exact decay" begin
     grid = Grid((32, 24), ((-4, 4), (-5, 5)))
     Ly = grid.Ly
@@ -1123,16 +971,8 @@ end
     end
 end
 
-# ==========================================================================
-# RK4 order (2D): with ν=0 the semi-implicit step is a plain RK4 applied to
-# the nonlinear term, so the global error must converge as Δt⁴.
-#
-# A single 2D vortex mode has ζ ∝ ψ, so its Jacobian J(ψ,ζ) vanishes and the
-# flow is frozen (nothing to converge). We use a superposition of two
-# divergence-free modes, for which ζ ∉ span{ψ} and the nonlinear dynamics is
-# genuinely active (|u(T)-u(0)| ≫ roundoff), so the O(Δt⁵) error sits above
-# the roundoff floor and the order is measurable.
-# ==========================================================================
+# RK4 order (2D). One vortex mode has ζ ∝ ψ so J(ψ,ζ)=0 (frozen); two superposed modes
+# put the O(Δt⁵) error above roundoff.
 @testset "NS RK4 convergence order 2D" begin
     grid = Grid((32, 24), ((-4, 4), (-5, 5)))
     Lx, Ly = grid.Lx, grid.Ly
@@ -1159,7 +999,7 @@ end
         return [parent(field.ux), parent(field.uy)]
     end
 
-    ref = run(t_final / 1000)   # reference run (error ~128× smaller)
+    ref = run(t_final / 1000)
     e1 = run(t_final / 4)
     e2 = run(t_final / 8)
     e3 = run(t_final / 16)
@@ -1174,10 +1014,7 @@ end
     @test 3.8 < o2 < 4.2
 end
 
-# ==========================================================================
-# Taylor-Green time integration (2D): energy strictly decays (dE/dt ≤ 0),
-# the divergence stays at roundoff level, and there is no blow-up.
-# ==========================================================================
+# Taylor-Green (2D): energy decays (dE/dt ≤ 0), divergence at roundoff, no blow-up.
 @testset "NS Taylor-Green time integration 2D" begin
     grid = Grid((32, 24), ((-4, 4), (-5, 5)))
     field = Field(grid, ComplexField(); ndims=2)
@@ -1199,14 +1036,9 @@ end
     @test Emax < 1.01 * E0  # no blow-up
 end
 
-# ==========================================================================
-# Coupled GP-NS two-fluid model (NSGP)
-# ==========================================================================
 
-# A regularised 2D quantum vortex psi = A(r) e^{i theta} with A(r) = r/sqrt(r^2+a^2)
-# has superfluid velocity  u_s = 2|alpha| Im(psi_bar grad psi)/|psi|^2 = 2|alpha| r/(r^2+a^2) e_theta
-# (finite core, -> 2|alpha|/r away from the core). Validates compute_u_adv_Fns!
-# (regularised velocity, one-way counterflow, V_xm) end to end.
+# Regularised vortex ψ = A(r) e^{iθ}, A(r) = r/√(r²+a²):
+# u_s = 2|alpha| r/(r²+a²) e_theta — validates compute_u_adv_Fns!.
 @testset "NSGP regularised vortex superfluid velocity (2D)" begin
     grid = Grid((64, 64), ((-8, 8), (-8, 8)))
     fgp = Field(grid, ComplexField(); ndims=2)
@@ -1229,8 +1061,7 @@ end
     # 1) the regularised core is finite and bounded (no 1/r singularity)
     @test all(isfinite.(usx)) && all(isfinite.(usy))
     @test maximum(mag[r .< 1.2a]) < 2 * abs(α) / a
-    # 2) away from the core the velocity is azimuthal (rotational): u_s ~ |u| e_theta.
-    # (checked in an annulus away from the core and the periodic corners)
+    # 2) away from the core u_s ~ |u| e_theta (annulus, away from corners).
     outer = (r .> 4a) .& (r .< 7a)
     cosang = sum(mag[outer] .* (usx[outer] .* etx[outer] .+ usy[outer] .* ety[outer])) /
              sum(mag[outer] .^ 2)
@@ -1239,9 +1070,8 @@ end
     @test maximum(mag[outer]) > 0.05 * (2 * abs(α) / a)
 end
 
-# A real GP field has u_s = 0 (no phase gradient). With one-way coupling the
-# normal fluid then evolves as a (viscous) NS flow: it stays divergence-free,
-# finite, and the GP mass is kept stable by the mass correction.
+# A real GP field has u_s = 0; with one-way coupling the normal fluid then evolves
+# as a viscous NS flow.
 @testset "NSGP real GP field: u_s = 0 and stable one-way NS evolution (2D)" begin
     grid = Grid((48, 36), ((-4, 4), (-5, 5)))
     fgp = Field(grid, ComplexField(); ndims=2)
@@ -1269,9 +1099,6 @@ end
     @test abs(N - N0) < 1e-5 * N0
 end
 
-# Full two-way coupling in 2D: an initial superfluid vortex (with vorticity)
-# and a background normal flow. The mutual-friction force is non-zero, both
-# fields stay finite, and the normal fluid remains divergence-free.
 @testset "NSGP two-way 2D coupled evolution stays finite and divergence-free" begin
     grid = Grid((48, 36), ((-4, 4), (-5, 5)))
     fgp = Field(grid, ComplexField(); ndims=2)
@@ -1288,8 +1115,6 @@ end
     p = NSGPParameters(; α=-0.01, ν=0.01, β=1.0, ρn=0.5, ρs=0.5,
                        Btab=0.4, Bptab=0.1, ξ=1.0, ε2=0.1)
     n = NumModelNSGP(fgp, fns, p, 0.003, 8, 1; stepper="RK2Imp")
-    # the mutual friction force is non-zero where the counterflow and
-    # superfluid vorticity are both non-zero
     SuperfluidDynamics.compute_u_adv_Fns!(n, n.phihat, n.u_hat)
     @test maximum(abs.(real.(parent(n.fns_phys[1])))) > 1e-6
     @test maximum(abs.(real.(parent(n.fns_phys[2])))) > 1e-6
@@ -1303,13 +1128,7 @@ end
     @test maximum(abs.(parent(d))) < 1e-9 * maximum(abs.(parent(n.u_hat[1])))
 end
 
-# --------------------------------------------------------------------------
 # NSGP in 3D
-# --------------------------------------------------------------------------
-# (1) A z-invariant 3D state (cubic box, nz = nx so the 2/3-rule cut-offs agree)
-#     must reproduce the validated 2D evolution slice by slice: same friction
-#     force at the first evaluation (this fixes the sign convention of F_SN in the
-#     3D branch), same velocity and wavefunction after a few steps, uz = 0.
 @testset "NSGP 3D: z-invariant state reproduces the 2D evolution" begin
     N, L = 24, 4.0
     g2 = Grid((N, N), ((-L, L), (-L, L)))
@@ -1358,11 +1177,6 @@ end
           1e-9 * maximum(abs.(parent(fns3.u[1])))
 end
 
-# (2) A genuinely 3D state (tilted superfluid vortex line, Taylor-Green normal
-#     flow): the evolution stays finite and divergence-free, and the mutual
-#     friction is dissipative, ∫ F_SN·w ≤ 0 with w = v_n - v_s^reg. The
-#     Helmholtz projection and the 2/3 mask are orthogonal and w is
-#     divergence-free, so this holds exactly for the projected force.
 @testset "NSGP 3D: tilted vortex line, finite, divergence-free, friction dissipative" begin
     N, L = 16, 4.0
     g = Grid((N, N, N), ((-L, L), (-L, L), (-L, L)))
@@ -1399,13 +1213,8 @@ end
     @test maximum(abs.(parent(d))) < 1e-9 * maximum(abs.(parent(n.u_hat[1])))
 end
 
-# ==========================================================================
-# HVBK linear two-fluid model
-# ==========================================================================
 
-# The linear mutual friction F = -1/2 rb |w_s| (u_n - u_s) is an internal force:
-# the TOTAL momentum rho_n u_n + rho_s u_s must be conserved, both fields must
-# stay divergence-free, and the friction (plus viscosity) must dissipate energy.
+# Linear mutual friction F = -1/2 rb |w_s| (u_n - u_s) is an internal force: total
 @testset "HVBK total momentum conservation, div-free, energy decay (2D)" begin
     grid = Grid((48, 36), ((-4, 4), (-5, 5)))
     fn = Field(grid, ComplexField(); ndims=2)
@@ -1436,9 +1245,7 @@ end
     @test E1 > 0.3 * E0                          # ... but not unphysically
 end
 
-# With no mutual friction (rb = 0) and a superfluid at rest, nothing drives the
-# superfluid: it must stay (numerically) at rest, while the normal fluid
-# evolves as a standalone (viscous) NS flow.
+# rb = 0 with the superfluid at rest: nothing drives it, so it stays at rest.
 @testset "HVBK zero-friction: rest superfluid stays at rest (2D)" begin
     grid = Grid((48, 36), ((-4, 4), (-5, 5)))
     fn = Field(grid, ComplexField(); ndims=2)
@@ -1455,7 +1262,6 @@ end
     end
     @test maximum(abs.(parent(fs.ux))) < 1e-12
     @test maximum(abs.(parent(fs.uy))) < 1e-12
-    # the normal fluid still evolved (nonzero)
     @test maximum(abs.(parent(fn.ux))) > 0.1
 end
 
@@ -1488,14 +1294,8 @@ end
     end
 end
 
-# ==========================================================================
-# ARGLE (external velocity): Cartesian axis symmetry of the |u|^2 term
-# ==========================================================================
 @testset "ARGLE 3D external velocity: isotropy under axis relabeling" begin
-    # psi1 carries both an advection term −i u·∇ and a potential term
-    # |u|^2/(−4·coeffD). Both must use the SAME components of u, otherwise the
-    # result depends on how the axes are labelled. 2D is exempt:
-    # PotentialExternalVelocity sets uadvz = [] there.
+    # psi1 carries an advection term −i u·∇ and a potential term |u|^2/(−4·coeffD).
     N, U0, cD = 32, 0.3, -0.5
     grid = Grid((N, N, N), ((0.0, 2π), (0.0, 2π), (0.0, 2π)))
     f0(x, y, z) = 0.0
@@ -1531,17 +1331,8 @@ end
     @test all(isfinite.(real.(parent(f2.ϕ)))) && all(isfinite.(imag.(parent(f2.ϕ))))
 end
 
-# ==========================================================================
-# BdG zero-mode filter: structural, calibrated over a parameter sweep
-# ==========================================================================
 @testset "BdG zero-mode filter: sweep calibration (small cases)" begin
-    # Pins both ends of the `zero_ov` threshold through the public path, in cases
-    # cheap enough for the suite (24²):
-    # (a) weakly interacting trap — the Kohn mode, a PHYSICAL mode with large overlap
-    #     with ψ, survives while the zero mode is dropped;
-    # (b) vortex state — the zero mode sits at a small NONZERO frequency, so a
-    #     frequency cut would keep it and it is dropped structurally.
-    # The threshold itself is calibrated on a sweep, not on these two points.
+    # Both ends of the `zero_ov` threshold at 24² (calibrated on a sweep, not here):
     function bdg_modes(N, L, β; γx=1.0, γy=1.0, vortex=false, nev=8, ncv=0)
         g = Grid((N, N), ((-L, L), (-L, L)))
         f = Field(g, ComplexField())
@@ -1572,33 +1363,21 @@ end
         return nb.ωs, f
     end
 
-    # (a) β = 50, 24²: Kohn must survive at its analytic value. ncv raised
-    # explicitly: with the automatic size Arpack stalls on this small operator
-    # (measured: XYAUPD 'all possible eigenvalues of OP has been found').
+    # (a) β = 50, 24²: Kohn survives, analytic value. ncv by hand: Arpack stalls at
+    # the automatic size on this operator.
     ωs, _ = bdg_modes(24, 10.0, 50.0; nev=6, ncv=60)
     @test !isempty(ωs) && all(ω -> ω > 1e-3, ωs)      # no zero mode leaked
     kohn = argmin(abs.(ωs .- 1.0))
     @test abs(ωs[kohn] - 1.0) < 5e-2                   # Kohn survived the filter
 
-    # (b) vortex, β = 200, 24²: zero mode at ω=0.002 removed structurally.
-    # At 24² the lowest KEPT mode is ω=0.30 (a vortex edge mode — the 32² dense
-    # spectrum has its first physical mode at 1.01; the coarse grid brings one
-    # down). What the filter must guarantee at ANY size: nothing at the zero
-    # mode's frequency survives, and low physical modes do.
+    # (b) vortex, β = 200, 24²: zero mode at ω=0.002, removed structurally.
     ωv, _ = bdg_modes(24, 10.0, 200.0; vortex=true, nev=6, ncv=60)
     @test !isempty(ωv) && all(ω -> ω > 0.05, ωv)       # zero mode (ω=0.002) gone
     @test count(ω -> ω < 2.0, ωv) >= 2                 # physical modes kept
 end
 
-# ==========================================================================
-# Bogoliubov-de Gennes (matrix-free eigensolver)
-# ==========================================================================
 @testset "BdG anisotropic 2D harmonic oscillator: analytic spectrum (2D)" begin
-    # H = -0.5 ∇² + 0.5 x² + 1.0 y²  (PotentialQuadratic γx=1, γy=2) → ωx=1, ωy=√2.
-    # Exact ground state ψ ∝ exp(-ωx x²/2 - ωy y²/2), μ = E00 = (ωx+ωy)/2.
-    # With β=0 the BdG modes are ω = E - E00 = {ωx, ωy, 2ωx, ...} — all distinct,
-    # so this cleanly validates the matrix-free ARPACK solver, the zero-mode
-    # rejection and the symplectic normalization without any degenerate cluster.
+    # H = -0.5 ∇² + 0.5 x² + 1.0 y² (PotentialQuadratic γx=1, γy=2) → ωx=1, ωy=√2.
     grid = Grid((20, 20), ((-6.0, 6.0), (-6.0, 6.0)))
     field = Field(grid, ComplexField())
     X = reshape(vec(field.x), :, 1); Y = reshape(vec(field.y), 1, :)
@@ -1613,7 +1392,6 @@ end
 
     # chemical potential = E00 = (ωx+ωy)/2
     @test n.mu ≈ (ωx + ωy) / 2 atol=1e-3
-    # three positive-frequency modes, one per (ω, -ω) pair; zero mode dropped
     @test length(n.ωs) == 3
     expected = [ωx, ωy, 2ωx]   # 1.0, √2, 2.0
     @test all(abs.(n.ωs .- expected) .< 1e-3)
@@ -1626,11 +1404,7 @@ end
     end
 end
 
-# ==========================================================================
-# Full time steps on GPU arrays (NS + GP), single process
-# ==========================================================================
-# The solver loops are written with broadcasts and must give the CPU result on a
-# `CuArray` grid. Skipped when no CUDA device is available.
+# Full time steps on GPU arrays (NS + GP). Skipped without a CUDA device.
 @testset "NS and GP time steps on GPU arrays match CPU" begin
     have_gpu = try
         using CUDA
@@ -1644,7 +1418,6 @@ end
         rel(a, b) = sqrt(sum(abs2, collect(parent(a)) .- parent(b))) /
                     sqrt(sum(abs2, parent(b)))
 
-        # --- Navier-Stokes 2D: Taylor-Green initialisation + RK4 steps -----
         for (dims, bounds, nd) in (((32, 32), ((-π, π), (-π, π)), 2),
                                    ((16, 16, 16), ((-π, π), (-π, π), (-π, π)), 3))
             fields = map((Array, CuArray)) do A
@@ -1662,7 +1435,6 @@ end
             end
         end
 
-        # --- Gross-Pitaevskii: second-order splitting, harmonic trap -------
         res = map((Array, CuArray)) do A
             g = Grid((32, 32), ((-6, 6), (-6, 6)); array_type=A)
             f = Field(g, ComplexField())
@@ -1683,12 +1455,8 @@ end
     end
 end
 
-# ==========================================================================
-# Dealiasing bound: global, rank-independent
-# ==========================================================================
-# On a single rank the local grid IS the global one, so this pins the
-# DEFINITION of the bound; rank-count behaviour is measured by
-# benchmarks/scalability_rankinv.jl.
+# Dealiasing bound: on one rank local == global, so this pins its DEFINITION
+# (rank-count: scalability_rankinv.jl).
 @testset "ξmax_global is the (4/9)-rule bound of the FULL grid" begin
     for dims in ((48, 48), (48, 48, 48))
         g = Grid(dims, ntuple(_ -> (-2π, 2π), length(dims)))
@@ -1698,7 +1466,6 @@ end
         # analytic: (4/9)·min_d (π/Δx_d)²  (fftfreq max = Nyquist)
         expected = (4 / 9) * minimum((π / g.Δ[d])^2 for d in 1:length(dims))
         @test ξmax ≈ expected rtol = 1e-12
-        # the plan vectors are the global ones: same answer from the field grid
         gx = SuperfluidDynamics.spectral_grid(p)
         sq = x -> x^2
         ξs = length(dims) == 3 ? (gx.x, gx.y, gx.z) : (gx.x, gx.y)
@@ -1706,11 +1473,6 @@ end
     end
 end
 
-# ==========================================================================
-# NSGP and explicit-RK GP time steps on GPU (single process)
-# ==========================================================================
-# NSGP was the last model with a device-incompatible step (the dealiasing
-# bound reduced over the lazy grid wrapper). Same CPU/GPU comparison pattern.
 @testset "NSGP and GP-RK time steps on GPU arrays match CPU" begin
     have_gpu = try
         using CUDA
@@ -1745,7 +1507,6 @@ end
             @test rel(res[2].ϕ, res[1].ϕ) < 1e-10   # NSGP steps on GPU = CPU
         end
 
-        # explicit-RK GP (dealiases the solution every step — same fixed site)
         res = map((Array, CuArray)) do A
             g = Grid((32, 32), ((-2π, 2π), (-2π, 2π)); array_type=A)
             f = Field(g, ComplexField())

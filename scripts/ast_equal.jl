@@ -1,20 +1,19 @@
-# Preuve de non-regression pour une coupe de commentaires/docstrings ONLY.
+# Non-regression proof for a comment/docstring-ONLY cut.
 #
-# Le parseur de Julia jette les commentaires. Une docstring N'EST PAS une chaine nue
-# dans l'AST: Meta.parseall l'enveloppe dans un appel `Core.var"@doc"(ln, doc, def)`.
-# Les docstrings de CHAMP restent en revanche des chaines nues DANS LE BLOC du struct.
-# Un normalisateur qui ne retire que les chaines nues rate donc toutes les docstrings
-# de fonctions et de structs; un normalisateur qui retire TOUTES les chaines en rate
-# une moitie: il declare identiques deux fichiers ou une chaine de CODE a change
-# (`error("boom")` -> `error("bang")`). Les deux pieges ont ete trouve en validant ce
-# script avant de s'en servir (controles positif ET negatif, plus un controle negatif
-# sur chaine de code).
+# Julia's parser drops comments. A docstring is NOT a bare string in the AST:
+# `Meta.parseall` wraps it in a `Core.var"@doc"(ln, doc, def)` call. FIELD
+# docstrings, on the other hand, stay bare strings INSIDE the struct's block. So a
+# normalizer that drops only bare strings misses every function and struct docstring,
+# and one that drops ALL strings misses the other half: it declares equal two files
+# where a CODE string changed (`error("boom")` -> `error("bang")`). Both traps were
+# found while validating this script before trusting it (positive AND negative
+# controls, plus a negative control on a code string).
 #
-# Regle: une chaine n'est une docstring que si elle est en POSITION D'EXPRESSION d'un
-# bloc (block/module/struct/let) ou l'argument de `@doc`. A l'interieur d'un :call, une
-# chaine est du code et elle est gardee.
+# Rule: a string is a docstring only in EXPRESSION position inside a block
+# (block/module/struct/let) or as the argument of `@doc`. Inside a :call a string is
+# code and is kept.
 #
-# Usage: julia scripts/ast_equal.jl AVANT.jl APRES.jl
+# Usage: julia scripts/ast_equal.jl BEFORE.jl AFTER.jl
 
 const BLOCK_HEADS = (:block, :module, :struct, :let, :toplevel)
 
@@ -27,7 +26,7 @@ is_docstring_node(a) = (a isa String) ||
 normalize(x) = x
 
 function normalize(e::Expr)
-    is_atdoc(e) && return normalize(e.args[end])   # la definition est le DERNIER argument
+    is_atdoc(e) && return normalize(e.args[end])   # the definition is the LAST argument
     inblock = e.head in BLOCK_HEADS
     args = Any[]
     for a in e.args
@@ -42,29 +41,29 @@ function parse_file(f)
     try
         Meta.parseall(read(f, String), filename=f)
     catch err
-        println("PARSE IMPOSSIBLE $f: $err"); exit(2)
+        println("PARSE FAILED $f: $err"); exit(2)
     end
 end
 
 function report(ga, gb)
-    println("  expressions au niveau superieur: ", length(ga), " vs ", length(gb))
+    println("  top-level expressions: ", length(ga), " vs ", length(gb))
     for i in 1:min(length(ga), length(gb))
         ga[i] == gb[i] && continue
-        println("  1re divergence a l'expression ", i, ":")
-        println("    avant: ", first(string(ga[i]), 220))
-        println("    apres: ", first(string(gb[i]), 220))
+        println("  first divergence at expression ", i, ":")
+        println("    before: ", first(string(ga[i]), 220))
+        println("    after:  ", first(string(gb[i]), 220))
         return
     end
 end
 
 function main()
-    length(ARGS) == 2 || error("usage: ast_equal.jl AVANT.jl APRES.jl")
+    length(ARGS) == 2 || error("usage: ast_equal.jl BEFORE.jl AFTER.jl")
     ea, eb = normalize(parse_file(ARGS[1])), normalize(parse_file(ARGS[2]))
     if ea == eb
-        println("CODE IDENTIQUE  ", ARGS[1], "  vs  ", ARGS[2])
+        println("CODE IDENTICAL  ", ARGS[1], "  vs  ", ARGS[2])
         exit(0)
     end
-    println("DESACCORD DE CODE entre ", ARGS[1], " et ", ARGS[2])
+    println("CODE MISMATCH between ", ARGS[1], " and ", ARGS[2])
     report(ea.args, eb.args)
     exit(1)
 end
